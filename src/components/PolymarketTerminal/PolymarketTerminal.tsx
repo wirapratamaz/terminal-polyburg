@@ -186,12 +186,18 @@ export function PolymarketTerminal() {
 
   return (
     <div className="h-screen bg-black flex flex-col overflow-hidden">
-      {/* Top ticker bar */}
+      {/* Top ticker bar - Real activity */}
       <div className="bg-black border-b border-green-500/30 px-4 py-1 font-mono text-xs text-green-400 overflow-hidden whitespace-nowrap">
         <div className="animate-marquee inline-block">
-          Zigmund SELL Yes @ Will Bournemouth win the 2025-26 Engl... &nbsp;&nbsp;&nbsp; Zigmund
-          SELL Yes @ Will Aston Villa win the 2025-26 Engl... &nbsp;&nbsp;&nbsp; luna113 BUY Down
-          @ Bitcoin Up or Down — October 15, 4PM ET &nbsp;&nbsp;&nbsp; anciente BUY
+          {activityMessages.length > 0 ? (
+            activityMessages.slice(-3).map((msg, idx) => (
+              <span key={idx}>
+                {msg} &nbsp;&nbsp;&nbsp;
+              </span>
+            ))
+          ) : (
+            <span>Waiting for market activity...</span>
+          )}
         </div>
       </div>
 
@@ -221,7 +227,12 @@ export function PolymarketTerminal() {
             />
           </div>
           <div className="h-32 shrink-0 border-t border-green-500/30">
-            <InfoBar messages={activityMessages} />
+            <InfoBar
+              messages={activityMessages}
+              selectedMarket={selectedMarket}
+              selectedTokenId={selectedTokenId}
+              orderBook={orderBook}
+            />
           </div>
         </div>
       </div>
