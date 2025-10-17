@@ -53,7 +53,7 @@ export function MarketsList({ markets, selectedMarket, onSelectMarket }: Markets
     <div className="flex flex-col h-full border border-green-500/30 bg-black/90 font-mono">
       {/* Header */}
       <div className="border-b border-green-500/30 px-2 py-0.5 bg-green-950/20">
-        <div className="text-green-400 font-bold text-[9px] leading-tight">
+        <div className="text-green-400 font-bold text-xs leading-tight">
           Results
         </div>
       </div>
@@ -61,7 +61,7 @@ export function MarketsList({ markets, selectedMarket, onSelectMarket }: Markets
       {/* Market List */}
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-green-500/30 border border-green-500/20">
         {displayMarkets.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-green-500/50 text-[8px]">
+          <div className="flex items-center justify-center h-full text-green-500/50 text-xs">
             No markets found
           </div>
         ) : (
@@ -80,20 +80,21 @@ export function MarketsList({ markets, selectedMarket, onSelectMarket }: Markets
                       ? 'bg-green-500/10'
                       : 'hover:bg-green-500/5'
                   }`}
+                  onMouseEnter={() => setHoveredIndex(index)}
+                  onMouseLeave={() => setHoveredIndex(-1)}
                   onClick={() => {
                     if (market.tokens && market.tokens.length > 0) {
                       onSelectMarket(market, market.tokens[0].token_id);
                     }
                   }}
-                  onMouseEnter={() => setHoveredIndex(index)}
                 >
-                  <div className="text-[8px] leading-tight font-mono">
-                    <span className={isSelected ? 'text-yellow-300' : 'text-green-400'}>
-                      {index + 1}.
-                    </span>
-                    <span className={`ml-1 ${isSelected ? 'text-yellow-200' : 'text-green-300'}`}>
-                      {market.question} — {formatDate(market.end_date_iso || market.created_at || '')}
-                    </span>
+                  <div className="text-green-400 text-xs font-medium leading-tight mb-0.5">
+                    {market.question.length > 60
+                      ? `${market.question.substring(0, 60)}...`
+                      : market.question}
+                  </div>
+                  <div className="text-green-500/60 text-xs">
+                    {market.end_date_iso ? formatDate(market.end_date_iso) : 'No end date'}
                   </div>
                 </div>
               );
