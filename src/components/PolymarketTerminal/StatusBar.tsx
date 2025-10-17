@@ -123,8 +123,10 @@ export function StatusBar({ isConnected, selectedMarket, selectedTokenId, orderB
                 <span className="text-green-300 font-mono tabular-nums">{tokenData.price}</span>
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-green-500/70">Size:</span>
-                <span className="text-green-300 font-mono tabular-nums">--</span>
+                <span className="text-green-500/70">Vol:</span>
+                <span className="text-green-300 font-mono tabular-nums">
+                  {selectedMarket?.volume_24hr || '--'}
+                </span>
               </div>
               <div className="flex items-center gap-1">
                 <span className="text-green-500/70">Outcome:</span>
