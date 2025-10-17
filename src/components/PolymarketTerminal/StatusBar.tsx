@@ -72,6 +72,24 @@ export function StatusBar({ isConnected, selectedMarket, selectedTokenId, orderB
     return `${tokenId.slice(0, 6)}...${tokenId.slice(-6)}`;
   };
 
+  // Format volume for better readability
+  const formatVolume = (volume: string | undefined | null) => {
+    if (!volume) return '--';
+
+    const num = parseFloat(volume);
+    if (isNaN(num)) return '--';
+
+    if (num >= 1000000) {
+      return `${(num / 1000000).toFixed(1)}M`;
+    } else if (num >= 1000) {
+      return `${(num / 1000).toFixed(1)}K`;
+    } else if (num >= 1) {
+      return num.toFixed(1);
+    } else {
+      return num.toFixed(3);
+    }
+  };
+
   // Return placeholder on server to prevent hydration mismatch
   if (!isClient) {
     return (
@@ -125,7 +143,7 @@ export function StatusBar({ isConnected, selectedMarket, selectedTokenId, orderB
               <div className="flex items-center gap-1">
                 <span className="text-green-500/70">Vol:</span>
                 <span className="text-green-300 font-mono tabular-nums">
-                  {selectedMarket?.volume_24hr || '--'}
+                  {formatVolume(selectedMarket?.volume_24hr)}
                 </span>
               </div>
               <div className="flex items-center gap-1">
