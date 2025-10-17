@@ -9,20 +9,39 @@ interface StatusBarProps {
 }
 
 export function StatusBar({ isConnected, selectedMarket, lastUpdateTime }: StatusBarProps) {
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState<string>('');
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
+    setIsClient(true);
+    // Set initial time only on client
+    setCurrentTime(new Date().toLocaleTimeString('en-US', { hour12: false }));
+
     const interval = setInterval(() => {
-      setCurrentTime(new Date());
+      setCurrentTime(new Date().toLocaleTimeString('en-US', { hour12: false }));
     }, 1000);
 
     return () => clearInterval(interval);
   }, []);
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', { hour12: false });
-  };
+  // Return placeholder on server to prevent hydration mismatch
+  if (!isClient) {
+    return (
+      <div className="border-t border-green-500/30 bg-black/95 font-mono text-[9px]">
+        <div className="flex items-center justify-between px-3 py-1">
+          <div className="flex items-center gap-4">
+            <span className="text-green-500/70">Loading...</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="w-1.5 h-1.5 rounded-full bg-gray-500" />
+            <span className="text-gray-400">--:--:--</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
+  
   return (
     <div className="border-t border-green-500/30 bg-black/95 font-mono text-[9px]">
       <div className="flex items-center justify-between px-3 py-1">
@@ -59,7 +78,7 @@ export function StatusBar({ isConnected, selectedMarket, lastUpdateTime }: Statu
             </span>
           </div>
           <div className="text-green-300 font-mono tabular-nums">
-            {formatTime(currentTime)}
+            {currentTime}
           </div>
         </div>
       </div>

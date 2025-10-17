@@ -2016,7 +2016,7 @@ export default function HoverReceiver() {
           {hoverBoxes
             .filter((box): box is NonNullable<Box> => box !== null)
             .map((box, index) => (
-              <div key={index}>
+              <div key={`${box.top}-${box.left}-${box.width}-${box.height}-hover-${index}`}>
                 <div
                   className="fixed pointer-events-none border-[0.5px] border-[#38bdf8] bg-blue-200/20 border-dashed rounded-sm"
                   style={{

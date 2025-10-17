@@ -11,12 +11,12 @@ interface OrderBookPanelProps {
 
 export function OrderBookPanel({ orderBook, marketQuestion, outcome }: OrderBookPanelProps) {
   const bestBid = useMemo(() => {
-    if (!orderBook?.bids.length) return null;
+    if (!orderBook?.bids || !orderBook.bids.length) return null;
     return orderBook.bids[0];
   }, [orderBook?.bids]);
 
   const bestAsk = useMemo(() => {
-    if (!orderBook?.asks.length) return null;
+    if (!orderBook?.asks || !orderBook.asks.length) return null;
     return orderBook.asks[0];
   }, [orderBook?.asks]);
 
@@ -44,8 +44,8 @@ export function OrderBookPanel({ orderBook, marketQuestion, outcome }: OrderBook
 
   // Generate 50 rows for order book display
   const displayRows = Array.from({ length: 50 }).map((_, index) => ({
-    bid: orderBook?.bids[index] || null,
-    ask: orderBook?.asks[index] || null,
+    bid: (orderBook?.bids && orderBook.bids[index]) || null,
+    ask: (orderBook?.asks && orderBook.asks[index]) || null,
     index
   }));
 
@@ -158,7 +158,7 @@ export function OrderBookPanel({ orderBook, marketQuestion, outcome }: OrderBook
         <div className="border-t border-green-500/40 px-2 py-0.5 bg-black text-[8px] text-green-400/70">
           <div className="flex justify-between font-mono tabular-nums">
             <span>Spread: {spread || '—'}</span>
-            <span>Bids: {orderBook.bids.length} | Asks: {orderBook.asks.length}</span>
+            <span>Bids: {orderBook?.bids?.length || 0} | Asks: {orderBook?.asks?.length || 0}</span>
             <span>Last: {new Date(orderBook.timestamp).toLocaleTimeString()}</span>
           </div>
         </div>

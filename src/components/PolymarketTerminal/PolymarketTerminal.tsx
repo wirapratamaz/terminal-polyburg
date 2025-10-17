@@ -24,6 +24,17 @@ export function PolymarketTerminal() {
 
   // Initialize WebSocket client
   useEffect(() => {
+    // Check if credentials are available
+    const hasCredentials = !!(process.env.NEXT_PUBLIC_POLYMARKET_API_KEY &&
+                              process.env.POLYMARKET_API_SECRET &&
+                              process.env.POLYMARKET_PASSPHRASE);
+
+    if (!hasCredentials) {
+      addActivityMessage('📡 WebSocket: Missing API credentials for live data');
+      addActivityMessage('   Add POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE to .env.local');
+      addActivityMessage('   App will work with static market data in the meantime');
+    }
+
     const client = new PolymarketWebSocketClient();
     setWsClient(client);
 
@@ -36,11 +47,25 @@ export function PolymarketTerminal() {
       }
     });
 
+    client.on('error', (error: any) => {
+      const errorMsg = error.message || 'Unknown error';
+      addActivityMessage(`WebSocket error: ${errorMsg}`);
+
+      if (error.code === 'UNAUTHORIZED' || errorMsg.includes('401')) {
+        addActivityMessage('Authentication failed - check API credentials');
+        addActivityMessage('Required: POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE');
+      } else if (error.code === 'MISSING_CREDENTIALS') {
+        addActivityMessage('⚠️ WebSocket credentials missing in .env.local');
+        addActivityMessage('Add POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE for live data');
+        addActivityMessage('App will work with static market data in the meantime');
+      }
+    });
+
     client.on('book', (book: OrderBookState) => {
       setOrderBook(book);
       setLastUpdateTime(book.timestamp);
       addActivityMessage(
-        `Order book updated: ${book.bids.length} bids, ${book.asks.length} asks`
+        `Order book updated: ${book?.bids?.length || 0} bids, ${book?.asks?.length || 0} asks`
       );
     });
 
@@ -49,6 +74,14 @@ export function PolymarketTerminal() {
       addActivityMessage(
         `Price change: ${change.side} ${change.price} × ${change.size}`
       );
+    });
+
+    client.on('order', (order: any) => {
+      addActivityMessage(`Order update: ${order.side} ${order.size} @ ${order.price}`);
+    });
+
+    client.on('trade', (trade: any) => {
+      addActivityMessage(`Trade executed: ${trade.side} ${trade.size} @ ${trade.price}`);
     });
 
     // Load initial markets
@@ -61,11 +94,42 @@ export function PolymarketTerminal() {
 
   const loadInitialMarkets = async () => {
     setIsSearching(true);
-    const initialMarkets = await fetchMarkets(50);
-    setMarkets(initialMarkets);
-    setIsSearching(false);
-    if (initialMarkets.length > 0) {
-      addActivityMessage(`Loaded ${initialMarkets.length} markets`);
+    try {
+      addActivityMessage('Loading markets from Polymarket...');
+      const initialMarkets = await fetchMarkets(50);
+      setMarkets(initialMarkets);
+      setIsSearching(false);
+
+      if (initialMarkets.length > 0) {
+        addActivityMessage(`✓ Loaded ${initialMarkets.length} tradable markets`);
+
+        // Auto-select first market for demo (even if WebSocket is not connected)
+        const firstMarket = initialMarkets[0];
+        console.log('First market:', firstMarket);
+
+        if (firstMarket && firstMarket.tokens && firstMarket.tokens.length > 0) {
+          const firstToken = firstMarket.tokens[0];
+          console.log('First token:', firstToken);
+
+          if (firstToken && firstToken.token_id) {
+            handleSelectMarket(firstMarket, firstToken.token_id);
+            addActivityMessage(`Auto-selected: ${firstMarket.question.substring(0, 50)}...`);
+
+            if (!isConnected) {
+              addActivityMessage('WebSocket not connected - showing static market data only');
+            }
+          } else {
+            addActivityMessage('⚠ First market has invalid token data');
+          }
+        } else {
+          addActivityMessage('⚠ No valid markets with tokens found');
+        }
+      } else {
+        addActivityMessage('⚠ No markets found');
+      }
+    } catch (error) {
+      setIsSearching(false);
+      addActivityMessage(`✗ Failed to load markets: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -90,20 +154,29 @@ export function PolymarketTerminal() {
 
   const handleSelectMarket = useCallback(
     (market: Market, tokenId: string) => {
+      if (!market || !market.tokens) {
+        addActivityMessage('Invalid market data');
+        return;
+      }
+
       setSelectedMarket(market);
       setSelectedTokenId(tokenId);
       setOrderBook(null);
 
       // Find token index
       const tokenIndex = market.tokens.findIndex((t) => t.token_id === tokenId);
-      setSelectedTokenIndex(tokenIndex);
+      setSelectedTokenIndex(tokenIndex >= 0 ? tokenIndex : 0);
 
-      // Subscribe to market via WebSocket
-      if (wsClient && market.condition_id) {
-        wsClient.subscribeToMarkets([market.condition_id]);
-        addActivityMessage(
-          `Subscribed to: ${market.question} - ${market.tokens[tokenIndex]?.outcome || 'Unknown'}`
-        );
+      // Subscribe to market via WebSocket using token ID
+      if (wsClient && tokenId) {
+        if (wsClient.isConnected()) {
+          wsClient.subscribeToMarkets([tokenId]);
+          addActivityMessage(
+            `Subscribed to market: ${market.question} - ${market.tokens[tokenIndex]?.outcome || 'Unknown'}`
+          );
+        } else {
+          addActivityMessage('WebSocket not connected - cannot subscribe to market');
+        }
       }
     },
     [wsClient, addActivityMessage]
@@ -112,10 +185,12 @@ export function PolymarketTerminal() {
   // Handle 'q' key to flip outcome
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'q' && selectedMarket && selectedMarket.tokens.length > 1) {
+      if (e.key === 'q' && selectedMarket && selectedMarket.tokens && selectedMarket.tokens.length > 1) {
         const nextIndex = (selectedTokenIndex + 1) % selectedMarket.tokens.length;
         const nextToken = selectedMarket.tokens[nextIndex];
-        handleSelectMarket(selectedMarket, nextToken.token_id);
+        if (nextToken) {
+          handleSelectMarket(selectedMarket, nextToken.token_id);
+        }
       }
     };
 
@@ -124,18 +199,24 @@ export function PolymarketTerminal() {
   }, [selectedMarket, selectedTokenIndex, handleSelectMarket]);
 
   const currentOutcome = useMemo(() => {
-    if (!selectedMarket || selectedTokenIndex < 0) return 'N/A';
+    if (!selectedMarket || selectedTokenIndex < 0 || !selectedMarket.tokens) return 'N/A';
     return selectedMarket.tokens[selectedTokenIndex]?.outcome || 'Unknown';
   }, [selectedMarket, selectedTokenIndex]);
 
   return (
     <div className="h-screen bg-black flex flex-col overflow-hidden">
-      {/* Top ticker bar */}
+      {/* Top ticker bar - Real activity */}
       <div className="bg-black border-b border-green-500/30 px-4 py-1 font-mono text-xs text-green-400 overflow-hidden whitespace-nowrap">
         <div className="animate-marquee inline-block">
-          Zigmund SELL Yes @ Will Bournemouth win the 2025-26 Engl... &nbsp;&nbsp;&nbsp; Zigmund
-          SELL Yes @ Will Aston Villa win the 2025-26 Engl... &nbsp;&nbsp;&nbsp; luna113 BUY Down
-          @ Bitcoin Up or Down — October 15, 4PM ET &nbsp;&nbsp;&nbsp; anciente BUY
+          {activityMessages.length > 0 ? (
+            activityMessages.slice(-3).map((msg, idx) => (
+              <span key={`ticker-${msg.slice(0, 15)}-${idx}`}>
+                {msg} &nbsp;&nbsp;&nbsp;
+              </span>
+            ))
+          ) : (
+            <span>Waiting for market activity...</span>
+          )}
         </div>
       </div>
 
@@ -165,7 +246,12 @@ export function PolymarketTerminal() {
             />
           </div>
           <div className="h-32 shrink-0 border-t border-green-500/30">
-            <InfoBar messages={activityMessages} />
+            <InfoBar
+              messages={activityMessages}
+              selectedMarket={selectedMarket}
+              selectedTokenId={selectedTokenId}
+              orderBook={orderBook}
+            />
           </div>
         </div>
       </div>
