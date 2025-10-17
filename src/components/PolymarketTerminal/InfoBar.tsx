@@ -34,7 +34,7 @@ export function InfoBar({
     <div className="flex flex-col h-full border border-green-500/30 bg-black/95 font-mono overflow-hidden">
       {/* Trading Header - Real Market Data */}
       <div className="border-b border-green-500/30 px-2 py-0.5 bg-green-950/20">
-        <div className="text-green-400 font-bold text-[9px] leading-tight">
+        <div className="text-green-400 font-bold text-xs leading-tight">
           {selectedMarket && currentToken
             ? `Trading ${currentToken.outcome} — ${selectedMarket.question.slice(0, 50)}${selectedMarket.question.length > 50 ? '...' : ''}`
             : 'No market selected'
@@ -45,7 +45,7 @@ export function InfoBar({
       {/* Real Trading Details */}
       {(selectedMarket && currentToken && orderBook) && (
         <div className="border-b border-green-500/30 px-2 py-1 bg-black/50">
-          <div className="grid grid-cols-4 gap-3 text-[8px] leading-tight">
+          <div className="grid grid-cols-4 gap-3 text-xs leading-tight">
             <div>
               <span className="text-green-500/60">Token:</span>
               <span className="text-green-400 ml-1 font-mono">{formatTokenId(currentToken.token_id)}</span>
@@ -69,7 +69,7 @@ export function InfoBar({
               </span>
             </div>
           </div>
-          <div className="mt-1 text-[8px] text-green-400/70 leading-tight">
+          <div className="mt-1 text-xs text-green-400/70 leading-tight">
             Spread: {spread || '—'} | Bids: {orderBook.bids?.length || 0} | Asks: {orderBook.asks?.length || 0}
           </div>
         </div>
@@ -78,11 +78,11 @@ export function InfoBar({
       {/* Last Trade Info */}
       {orderBook?.lastTradePrice && (
         <div className="border-b border-green-500/30 px-2 py-1 bg-black/50">
-          <div className="text-[8px] text-green-400 font-mono leading-tight">
+          <div className="text-xs text-green-400 font-mono leading-tight">
             Last trade: {orderBook.lastTradeSide} @ {orderBook.lastTradePrice}
           </div>
           {currentToken && (
-            <div className="text-[8px] text-green-400/70 font-mono leading-tight">
+            <div className="text-xs text-green-400/70 font-mono leading-tight">
               Token: {formatTokenId(currentToken.token_id)}
             </div>
           )}
@@ -92,10 +92,10 @@ export function InfoBar({
       {/* Market Info */}
       {selectedMarket && (
         <div className="border-b border-green-500/30 px-2 py-0.5 bg-green-950/20">
-          <div className="text-green-400 font-bold text-[9px] leading-tight">
+          <div className="text-green-400 font-bold text-xs leading-tight">
             Market Info — {selectedMarket.question.slice(0, 30)}{selectedMarket.question.length > 30 ? '...' : ''}
           </div>
-          <div className="text-green-500/60 text-[8px] leading-tight mt-0.5">
+          <div className="text-green-500/60 text-xs leading-tight mt-0.5">
             Volume: {selectedMarket.volume_24hr || selectedMarket.volume || '0'} | Active: {selectedMarket.active ? 'Yes' : 'No'}
           </div>
         </div>
@@ -104,13 +104,13 @@ export function InfoBar({
       {/* Activity Messages */}
       <div className="flex-1 px-2 py-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-green-500/30">
         {messages.length === 0 ? (
-          <div className="text-green-500/50 text-[8px] leading-tight">
+          <div className="text-green-500/50 text-xs leading-tight">
             No recent activity
           </div>
         ) : (
           <div>
             {messages.slice(-6).map((msg, idx) => (
-              <div key={`msg-${msg.slice(0, 20)}-${idx}`} className="text-green-400/80 text-[8px] font-mono leading-tight">
+              <div key={`msg-${msg.slice(0, 20)}-${idx}`} className="text-green-400/80 text-xs font-mono leading-tight">
                 {msg}
               </div>
             ))}
@@ -120,7 +120,7 @@ export function InfoBar({
 
       {/* Bottom Status Bar */}
       <div className="border-t border-green-500/30 px-2 py-0.5 bg-black/50">
-        <div className="flex items-center justify-between text-[8px]">
+        <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-3">
             <div>
               <span className="text-green-500/60">Market Data:</span>

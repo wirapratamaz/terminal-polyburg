@@ -27,7 +27,7 @@ export function StatusBar({ isConnected, selectedMarket, lastUpdateTime }: Statu
   // Return placeholder on server to prevent hydration mismatch
   if (!isClient) {
     return (
-      <div className="border-t border-green-500/30 bg-black/95 font-mono text-[9px]">
+      <div className="border-t border-green-500/30 bg-black/95 font-mono text-xs">
         <div className="flex items-center justify-between px-3 py-1">
           <div className="flex items-center gap-4">
             <span className="text-green-500/70">Loading...</span>
@@ -43,7 +43,7 @@ export function StatusBar({ isConnected, selectedMarket, lastUpdateTime }: Statu
 
   
   return (
-    <div className="border-t border-green-500/30 bg-black/95 font-mono text-[9px]">
+    <div className="border-t border-green-500/30 bg-black/95 font-mono text-xs">
       <div className="flex items-center justify-between px-3 py-1">
         {/* Left side - Trading info with actual values */}
         <div className="flex items-center gap-4">

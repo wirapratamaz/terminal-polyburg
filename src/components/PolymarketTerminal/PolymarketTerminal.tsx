@@ -206,7 +206,7 @@ export function PolymarketTerminal() {
   return (
     <div className="h-screen bg-black flex flex-col overflow-hidden">
       {/* Top ticker bar - Real activity */}
-      <div className="bg-black border-b border-green-500/30 px-4 py-1 font-mono text-xs text-green-400 overflow-hidden whitespace-nowrap">
+      <div className="bg-black border-b border-green-500/30 px-4 py-2 font-mono text-sm text-green-400 overflow-hidden whitespace-nowrap">
         <div className="animate-marquee inline-block">
           {activityMessages.length > 0 ? (
             activityMessages.slice(-3).map((msg, idx) => (

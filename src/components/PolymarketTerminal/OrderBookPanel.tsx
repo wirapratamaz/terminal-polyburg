@@ -53,7 +53,7 @@ export function OrderBookPanel({ orderBook, marketQuestion, outcome }: OrderBook
     <div className="flex flex-col h-full border border-green-500/40 bg-black/95 font-mono">
       {/* Instruction Header */}
       <div className="border-b border-green-500/40 px-2 py-0.5 bg-black">
-        <div className="text-green-400 text-[9px] leading-tight">
+        <div className="text-green-400 text-xs leading-tight">
           Markets (Up/Down select, Enter/Right view book, 'q' flip outcome)
         </div>
       </div>
@@ -61,11 +61,11 @@ export function OrderBookPanel({ orderBook, marketQuestion, outcome }: OrderBook
       {/* Selected Market Header */}
       <div className="border-b border-green-500/40 px-2 py-1 bg-blue-950/30">
         {marketQuestion !== 'No market selected' ? (
-          <div className="text-blue-300 text-[9px] leading-tight font-semibold">
+          <div className="text-blue-300 text-xs leading-tight font-semibold">
             {outcome} — {marketQuestion}
           </div>
         ) : (
-          <div className="text-green-500/60 text-[9px] leading-tight">
+          <div className="text-green-500/60 text-xs leading-tight">
             N/A — No market selected
           </div>
         )}
@@ -74,10 +74,10 @@ export function OrderBookPanel({ orderBook, marketQuestion, outcome }: OrderBook
       {/* Column Headers */}
       <div className="border-b border-green-500/40 bg-black">
         <div className="grid grid-cols-6 gap-0 px-2 py-0.5">
-          <div className="text-center text-green-400 font-bold text-[8px] col-span-3 border-r border-green-500/30">Bids</div>
-          <div className="text-center text-red-400 font-bold text-[8px] col-span-3">Asks</div>
+          <div className="text-center text-green-400 font-bold text-xs col-span-3 border-r border-green-500/30">Bids</div>
+          <div className="text-center text-red-400 font-bold text-xs col-span-3">Asks</div>
         </div>
-        <div className="grid grid-cols-6 gap-0 px-2 py-0.5 text-green-400/70 font-bold text-[8px]">
+        <div className="grid grid-cols-6 gap-0 px-2 py-0.5 text-green-400/70 font-bold text-xs">
           <div className="text-right">Px</div>
           <div className="text-right">Sz</div>
           <div className="text-right border-r border-green-500/30 pr-1">USD</div>
@@ -90,7 +90,7 @@ export function OrderBookPanel({ orderBook, marketQuestion, outcome }: OrderBook
       {/* Order Book Ladder */}
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-green-500/30">
         {!orderBook ? (
-          <div className="flex items-center justify-center h-full text-green-500/50 text-[9px]">
+          <div className="flex items-center justify-center h-full text-green-500/50 text-sm">
             Waiting for order book data...
           </div>
         ) : (
@@ -101,7 +101,7 @@ export function OrderBookPanel({ orderBook, marketQuestion, outcome }: OrderBook
               return (
                 <div
                   key={row.index}
-                  className={`grid grid-cols-6 gap-0 px-2 py-0 text-[8px] leading-tight border-b border-green-500/5 ${
+                  className={`grid grid-cols-6 gap-0 px-2 py-0 text-xs leading-tight border-b border-green-500/5 ${
                     isHighlighted ? 'bg-yellow-600/20' : ''
                   }`}
                 >
@@ -155,7 +155,7 @@ export function OrderBookPanel({ orderBook, marketQuestion, outcome }: OrderBook
 
       {/* Footer Stats */}
       {orderBook && (
-        <div className="border-t border-green-500/40 px-2 py-0.5 bg-black text-[8px] text-green-400/70">
+        <div className="border-t border-green-500/40 px-2 py-0.5 bg-black text-xs text-green-400/70">
           <div className="flex justify-between font-mono tabular-nums">
             <span>Spread: {spread || '—'}</span>
             <span>Bids: {orderBook?.bids?.length || 0} | Asks: {orderBook?.asks?.length || 0}</span>
