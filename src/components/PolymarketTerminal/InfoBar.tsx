@@ -110,7 +110,7 @@ export function InfoBar({
         ) : (
           <div>
             {messages.slice(-6).map((msg, idx) => (
-              <div key={idx} className="text-green-400/80 text-[8px] font-mono leading-tight">
+              <div key={`msg-${msg.slice(0, 20)}-${idx}`} className="text-green-400/80 text-[8px] font-mono leading-tight">
                 {msg}
               </div>
             ))}
@@ -118,21 +118,24 @@ export function InfoBar({
         )}
       </div>
 
-      {/* Bottom Profile Bar */}
+      {/* Bottom Status Bar */}
       <div className="border-t border-green-500/30 px-2 py-0.5 bg-black/50">
         <div className="flex items-center justify-between text-[8px]">
           <div className="flex items-center gap-3">
             <div>
-              <span className="text-green-500/60">Profile (USDC.e)</span>
+              <span className="text-green-500/60">Market Data:</span>
+              <span className="text-green-400 ml-1 font-mono">
+                {selectedMarket ? 'Live' : 'No Market'}
+              </span>
             </div>
-            <div>
-              <span className="text-green-500/60">Cash:</span>
-              <span className="text-green-400 ml-1 font-mono tabular-nums">755.00</span>
-            </div>
-            <div>
-              <span className="text-green-500/60">Portfolio:</span>
-              <span className="text-green-400 ml-1 font-mono tabular-nums">2731.25</span>
-            </div>
+            {orderBook && (
+              <div>
+                <span className="text-green-500/60">Order Book:</span>
+                <span className="text-green-400 ml-1 font-mono">
+                  {orderBook.bids?.length || 0} Bids / {orderBook.asks?.length || 0} Asks
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>

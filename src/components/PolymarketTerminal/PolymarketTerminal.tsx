@@ -30,8 +30,9 @@ export function PolymarketTerminal() {
                               process.env.POLYMARKET_PASSPHRASE);
 
     if (!hasCredentials) {
-      addActivityMessage('Warning: Missing Polymarket API credentials in environment variables');
-      addActivityMessage('WebSocket connection will not work without API_SECRET and PASSPHRASE');
+      addActivityMessage('📡 WebSocket: Missing API credentials for live data');
+      addActivityMessage('   Add POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE to .env.local');
+      addActivityMessage('   App will work with static market data in the meantime');
     }
 
     const client = new PolymarketWebSocketClient();
@@ -53,6 +54,10 @@ export function PolymarketTerminal() {
       if (error.code === 'UNAUTHORIZED' || errorMsg.includes('401')) {
         addActivityMessage('Authentication failed - check API credentials');
         addActivityMessage('Required: POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE');
+      } else if (error.code === 'MISSING_CREDENTIALS') {
+        addActivityMessage('⚠️ WebSocket credentials missing in .env.local');
+        addActivityMessage('Add POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE for live data');
+        addActivityMessage('App will work with static market data in the meantime');
       }
     });
 
@@ -96,18 +101,28 @@ export function PolymarketTerminal() {
       setIsSearching(false);
 
       if (initialMarkets.length > 0) {
-        addActivityMessage(`✓ Loaded ${initialMarkets.length} markets`);
+        addActivityMessage(`✓ Loaded ${initialMarkets.length} tradable markets`);
 
         // Auto-select first market for demo (even if WebSocket is not connected)
         const firstMarket = initialMarkets[0];
+        console.log('First market:', firstMarket);
+
         if (firstMarket && firstMarket.tokens && firstMarket.tokens.length > 0) {
           const firstToken = firstMarket.tokens[0];
-          handleSelectMarket(firstMarket, firstToken.token_id);
-          addActivityMessage(`Auto-selected: ${firstMarket.question.substring(0, 50)}...`);
+          console.log('First token:', firstToken);
 
-          if (!isConnected) {
-            addActivityMessage('WebSocket not connected - showing static market data only');
+          if (firstToken && firstToken.token_id) {
+            handleSelectMarket(firstMarket, firstToken.token_id);
+            addActivityMessage(`Auto-selected: ${firstMarket.question.substring(0, 50)}...`);
+
+            if (!isConnected) {
+              addActivityMessage('WebSocket not connected - showing static market data only');
+            }
+          } else {
+            addActivityMessage('⚠ First market has invalid token data');
           }
+        } else {
+          addActivityMessage('⚠ No valid markets with tokens found');
         }
       } else {
         addActivityMessage('⚠ No markets found');
@@ -152,10 +167,10 @@ export function PolymarketTerminal() {
       const tokenIndex = market.tokens.findIndex((t) => t.token_id === tokenId);
       setSelectedTokenIndex(tokenIndex >= 0 ? tokenIndex : 0);
 
-      // Subscribe to market via WebSocket
-      if (wsClient && market.condition_id) {
+      // Subscribe to market via WebSocket using token ID
+      if (wsClient && tokenId) {
         if (wsClient.isConnected()) {
-          wsClient.subscribeToMarkets([market.condition_id]);
+          wsClient.subscribeToMarkets([tokenId]);
           addActivityMessage(
             `Subscribed to market: ${market.question} - ${market.tokens[tokenIndex]?.outcome || 'Unknown'}`
           );
@@ -195,7 +210,7 @@ export function PolymarketTerminal() {
         <div className="animate-marquee inline-block">
           {activityMessages.length > 0 ? (
             activityMessages.slice(-3).map((msg, idx) => (
-              <span key={idx}>
+              <span key={`ticker-${msg.slice(0, 15)}-${idx}`}>
                 {msg} &nbsp;&nbsp;&nbsp;
               </span>
             ))

@@ -20,7 +20,8 @@ export class PolymarketWebSocketClient {
   private isAuthenticated = false;
   private heartbeatInterval: NodeJS.Timeout | null = null;
 
-  private readonly WS_URL = process.env.NEXT_PUBLIC_POLYMARKET_WS_URL!;
+  private readonly MARKET_WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/market';
+  private readonly USER_WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/user';
   private readonly API_KEY = process.env.NEXT_PUBLIC_POLYMARKET_API_KEY!;
   private readonly API_SECRET = process.env.POLYMARKET_API_SECRET!;
   private readonly PASSPHRASE = process.env.POLYMARKET_PASSPHRASE!;
@@ -41,7 +42,8 @@ export class PolymarketWebSocketClient {
 
   private connect() {
     try {
-      this.ws = new WebSocket(this.WS_URL);
+      // Use market WebSocket URL for order book data
+      this.ws = new WebSocket(this.MARKET_WS_URL);
 
       this.ws.onopen = () => {
         console.log('WebSocket connected to Polymarket CLOB');
@@ -108,17 +110,28 @@ export class PolymarketWebSocketClient {
       return;
     }
 
+    // Check if we have all required credentials
+    if (!this.API_KEY || !this.API_SECRET || !this.PASSPHRASE) {
+      console.warn('⚠️ Missing WebSocket credentials - skipping authentication');
+      this.emit('error', {
+        code: 'MISSING_CREDENTIALS',
+        message: 'Missing POLYMARKET_API_SECRET or POLYMARKET_PASSPHRASE in .env.local'
+      });
+      return;
+    }
+
     const authMessage = {
-      type: 'auth',
       auth: {
-        key: this.API_KEY,
+        apiKey: this.API_KEY,
         secret: this.API_SECRET,
         passphrase: this.PASSPHRASE
-      }
+      },
+      assets_ids: [], // Will be populated when markets are selected
+      type: "MARKET"
     };
 
     this.ws.send(JSON.stringify(authMessage));
-    console.log(`Authentication sent with API key: ${this.API_KEY.substring(0, 10)}...`);
+    console.log(`Market subscription sent with API key: ${this.API_KEY.substring(0, 10)}...`);
   }
 
   private startHeartbeat() {
@@ -191,10 +204,21 @@ export class PolymarketWebSocketClient {
   }
 
   private handleSubscriptionResponse(message: any) {
-    const { channel, status, timestamp } = message.data;
-    console.log(`Subscription confirmed: ${channel} - ${status}`);
+    // Handle different response formats
+    if (message.data) {
+      const { channel, status, timestamp } = message.data;
+      console.log(`Subscription confirmed: ${channel} - ${status}`);
 
-    if (status === 'subscribed') {
+      if (status === 'subscribed') {
+        if (!this.isAuthenticated) {
+          this.isAuthenticated = true;
+          this.emit('connected', true);
+          this.startHeartbeat();
+        }
+      }
+    } else if (message.success === true || message.status === 'success') {
+      // Alternative response format
+      console.log('Authentication/Subscription successful');
       if (!this.isAuthenticated) {
         this.isAuthenticated = true;
         this.emit('connected', true);
@@ -325,6 +349,15 @@ export class PolymarketWebSocketClient {
   }
 
   public subscribeToMarkets(markets: string[]) {
+    if (!this.API_KEY || !this.API_SECRET || !this.PASSPHRASE) {
+      console.warn('⚠️ Cannot subscribe to markets: missing WebSocket credentials');
+      this.emit('error', {
+        code: 'MISSING_CREDENTIALS',
+        message: 'Add POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE to .env.local for live data'
+      });
+      return;
+    }
+
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.warn('WebSocket is not connected. Markets will be subscribed on connection.');
       markets.forEach(m => this.subscribedMarkets.add(m));
@@ -337,19 +370,21 @@ export class PolymarketWebSocketClient {
       return;
     }
 
+    // For Polymarket, we need to subscribe to specific token IDs (asset_ids), not market condition IDs
+    // We'll need to get the token IDs from the market data
     const message = {
       auth: {
-        key: this.API_KEY,
+        apiKey: this.API_KEY,
         secret: this.API_SECRET,
         passphrase: this.PASSPHRASE
       },
-      type: 'MARKET',
-      markets: markets
+      assets_ids: markets, // These should be token IDs
+      type: "MARKET"
     };
 
     this.ws.send(JSON.stringify(message));
     markets.forEach(market => this.subscribedMarkets.add(market));
-    console.log('Subscribed to markets:', markets);
+    console.log('Subscribed to markets (token IDs):', markets);
   }
 
   public subscribeToAssets(assetIds: string[]) {
