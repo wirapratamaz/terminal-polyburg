@@ -1,6 +1,7 @@
 import { Market } from './types';
+import { getApiBase } from '../config';
 
-const CLOB_API_BASE = 'https://clob.polymarket.com';
+const CLOB_API_BASE = getApiBase('clob');
 
 export async function fetchMarkets(limit = 100, offset = 0): Promise<Market[]> {
   try {

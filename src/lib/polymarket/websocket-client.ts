@@ -7,12 +7,13 @@ import {
   SubscribeMessage,
   UnsubscribeMessage,
 } from './types';
+import { config } from '../config';
 
 export class PolymarketWebSocketClient {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 1000;
+  private maxReconnectAttempts = config.websocket.reconnectAttempts;
+  private reconnectDelay = config.websocket.reconnectDelay;
   private subscribedMarkets: Set<string> = new Set();
   private subscribedAssets: Set<string> = new Set();
   private orderBooks: Map<string, OrderBookState> = new Map();
@@ -20,11 +21,10 @@ export class PolymarketWebSocketClient {
   private isAuthenticated = false;
   private heartbeatInterval: NodeJS.Timeout | null = null;
 
-  private readonly MARKET_WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/market';
-  private readonly USER_WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/user';
-  private readonly API_KEY = process.env.NEXT_PUBLIC_POLYMARKET_API_KEY!;
-  private readonly API_SECRET = process.env.POLYMARKET_API_SECRET!;
-  private readonly PASSPHRASE = process.env.POLYMARKET_PASSPHRASE!;
+  private readonly WS_URL = config.websocket.url;
+  private readonly API_KEY = config.auth.apiKey;
+  private readonly API_SECRET = config.auth.apiSecret;
+  private readonly PASSPHRASE = config.auth.passphrase;
 
   constructor() {
     // Validate credentials before connecting
@@ -42,8 +42,8 @@ export class PolymarketWebSocketClient {
 
   private connect() {
     try {
-      // Use market WebSocket URL for order book data
-      this.ws = new WebSocket(this.MARKET_WS_URL);
+      // Use Polymarket CLOB WebSocket URL for real-time data
+      this.ws = new WebSocket(this.WS_URL);
 
       this.ws.onopen = () => {
         console.log('WebSocket connected to Polymarket CLOB');
@@ -122,7 +122,7 @@ export class PolymarketWebSocketClient {
 
     const authMessage = {
       auth: {
-        apiKey: this.API_KEY,
+        key: this.API_KEY,
         secret: this.API_SECRET,
         passphrase: this.PASSPHRASE
       },
@@ -131,7 +131,8 @@ export class PolymarketWebSocketClient {
     };
 
     this.ws.send(JSON.stringify(authMessage));
-    console.log(`Market subscription sent with API key: ${this.API_KEY.substring(0, 10)}...`);
+    console.log(`WebSocket authentication sent with API key: ${this.API_KEY.substring(0, 10)}...`);
+    console.log('Authentication message:', JSON.stringify(authMessage, null, 2));
   }
 
   private startHeartbeat() {
@@ -163,6 +164,8 @@ export class PolymarketWebSocketClient {
   }
 
   private handleMessage(message: any) {
+    console.log('Received WebSocket message:', message);
+
     // Handle authentication response
     if (message.type === 'subscription') {
       this.handleSubscriptionResponse(message);
@@ -199,7 +202,7 @@ export class PolymarketWebSocketClient {
         this.handleStatusMessage(message);
         break;
       default:
-        console.log('Unknown message type:', message);
+        console.log('Unknown message type:', message.type, message);
     }
   }
 
@@ -370,11 +373,10 @@ export class PolymarketWebSocketClient {
       return;
     }
 
-    // For Polymarket, we need to subscribe to specific token IDs (asset_ids), not market condition IDs
-    // We'll need to get the token IDs from the market data
+    // Subscribe to specific token IDs (asset_ids) for market data
     const message = {
       auth: {
-        apiKey: this.API_KEY,
+        key: this.API_KEY,
         secret: this.API_SECRET,
         passphrase: this.PASSPHRASE
       },
@@ -413,6 +415,36 @@ export class PolymarketWebSocketClient {
     this.ws.send(JSON.stringify(message));
     assetIds.forEach(assetId => this.subscribedAssets.add(assetId));
     console.log('Subscribed to assets:', assetIds);
+  }
+
+  public subscribeToUserChannel(markets: string[] = []) {
+    if (!this.API_KEY || !this.API_SECRET || !this.PASSPHRASE) {
+      console.warn('⚠️ Cannot subscribe to user channel: missing WebSocket credentials');
+      this.emit('error', {
+        code: 'MISSING_CREDENTIALS',
+        message: 'Add POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE to .env.local for live data'
+      });
+      return;
+    }
+
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn('WebSocket is not connected');
+      return;
+    }
+
+    const message = {
+      auth: {
+        key: this.API_KEY,
+        secret: this.API_SECRET,
+        passphrase: this.PASSPHRASE
+      },
+      type: 'USER',
+      markets: markets.length > 0 ? markets : Array.from(this.subscribedMarkets)
+    };
+
+    this.ws.send(JSON.stringify(message));
+    console.log('Subscribed to USER channel with markets:', message.markets);
+    console.log('User subscription message:', JSON.stringify(message, null, 2));
   }
 
   public unsubscribeFromMarkets(markets: string[]) {
