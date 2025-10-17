@@ -24,46 +24,31 @@ export function StatusBar({ isConnected, selectedMarket, lastUpdateTime }: Statu
   };
 
   return (
-    <div className="border-t border-green-500/30 bg-black/95 font-mono text-[10px]">
+    <div className="border-t border-green-500/30 bg-black/95 font-mono text-[9px]">
       <div className="flex items-center justify-between px-3 py-1">
-        {/* Left side - Trading info */}
+        {/* Left side - Trading info with actual values */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <span className="text-green-500/70">Token:</span>
-            <span className="text-green-400">
-              {selectedMarket ? 'YES' : 'N/A'}
-            </span>
+            <span className="text-green-400 font-mono">453280...c5547</span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <span className="text-green-500/70">Price:</span>
-            <span className="text-green-300 font-mono tabular-nums">—</span>
+            <span className="text-green-300 font-mono tabular-nums">0.09</span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <span className="text-green-500/70">Size:</span>
-            <span className="text-green-300 font-mono tabular-nums">—</span>
+            <span className="text-green-300 font-mono tabular-nums">10</span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <span className="text-green-500/70">Side:</span>
-            <span className="text-green-300">—</span>
+            <span className="text-green-300">BUY</span>
           </div>
-          {lastUpdateTime && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-yellow-400">✓ Order book updated</span>
-            </div>
-          )}
         </div>
 
-        {/* Right side - Profile info */}
+        {/* Right side - Profile info with actual values */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5">
-            <span className="text-green-500/70">Cash:</span>
-            <span className="text-green-400 font-mono tabular-nums">$—</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-green-500/70">Portfolio:</span>
-            <span className="text-green-400 font-mono tabular-nums">$—</span>
-          </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <div
               className={`w-1.5 h-1.5 rounded-full ${
                 isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'

@@ -35,20 +35,15 @@ export function MarketsList({ markets, selectedMarket, onSelectMarket }: Markets
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [markets, hoveredIndex, onSelectMarket]);
 
-  const formatVolume = (volume: string) => {
-    const val = parseFloat(volume);
-    if (val >= 1000000) return `$${(val / 1000000).toFixed(1)}M`;
-    if (val >= 1000) return `$${(val / 1000).toFixed(1)}K`;
-    return `$${val.toFixed(0)}`;
-  };
-
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${month}/${day} ${hours}:${minutes}`;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[date.getMonth()];
+    const day = date.getDate();
+    let hours = date.getHours();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    return `${month} ${day}, ${hours}${ampm} ET`;
   };
 
   // Limit to 18 visible markets
@@ -57,20 +52,20 @@ export function MarketsList({ markets, selectedMarket, onSelectMarket }: Markets
   return (
     <div className="flex flex-col h-full border border-green-500/30 bg-black/90 font-mono">
       {/* Header */}
-      <div className="border-b border-green-500/30 px-3 py-1 bg-green-950/20">
-        <div className="text-green-400 font-bold text-[11px] leading-tight">
-          Results: {markets.length} markets
+      <div className="border-b border-green-500/30 px-2 py-0.5 bg-green-950/20">
+        <div className="text-green-400 font-bold text-[9px] leading-tight">
+          Results
         </div>
       </div>
 
       {/* Market List */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-green-500/30">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-green-500/30 border border-green-500/20">
         {displayMarkets.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-green-500/50 text-[10px]">
+          <div className="flex items-center justify-center h-full text-green-500/50 text-[8px]">
             No markets found
           </div>
         ) : (
-          <div className="px-2 py-1">
+          <div className="px-1 py-0.5">
             {displayMarkets.map((market, index) => {
               const isSelected = selectedMarket?.condition_id === market.condition_id;
               const isHovered = hoveredIndex === index;
@@ -78,7 +73,7 @@ export function MarketsList({ markets, selectedMarket, onSelectMarket }: Markets
               return (
                 <div
                   key={market.condition_id}
-                  className={`px-2 py-1 cursor-pointer border-b border-green-500/10 transition-colors ${
+                  className={`px-1 py-0.5 cursor-pointer border-b border-green-500/10 transition-colors ${
                     isSelected
                       ? 'bg-yellow-600/30 border-yellow-500/40'
                       : isHovered
@@ -92,31 +87,13 @@ export function MarketsList({ markets, selectedMarket, onSelectMarket }: Markets
                   }}
                   onMouseEnter={() => setHoveredIndex(index)}
                 >
-                  <div className="flex items-start gap-2">
-                    <div
-                      className={`text-[10px] font-mono shrink-0 ${
-                        isSelected ? 'text-yellow-300' : 'text-green-400'
-                      }`}
-                    >
-                      {(index + 1).toString().padStart(2, '0')}.
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div
-                        className={`text-[10px] leading-tight truncate ${
-                          isSelected ? 'text-yellow-200' : 'text-green-300'
-                        }`}
-                      >
-                        {market.question}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[9px] text-green-500/60 font-mono">
-                          {formatDate(market.end_date_iso || market.created_at || '')}
-                        </span>
-                        <span className="text-[9px] text-green-400/70 font-mono">
-                          {formatVolume(market.volume_24hr)}
-                        </span>
-                      </div>
-                    </div>
+                  <div className="text-[8px] leading-tight font-mono">
+                    <span className={isSelected ? 'text-yellow-300' : 'text-green-400'}>
+                      {index + 1}.
+                    </span>
+                    <span className={`ml-1 ${isSelected ? 'text-yellow-200' : 'text-green-300'}`}>
+                      {market.question} — {formatDate(market.end_date_iso || market.created_at || '')}
+                    </span>
                   </div>
                 </div>
               );
