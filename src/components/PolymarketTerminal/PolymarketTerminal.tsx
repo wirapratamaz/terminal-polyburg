@@ -98,12 +98,16 @@ export function PolymarketTerminal() {
       if (initialMarkets.length > 0) {
         addActivityMessage(`✓ Loaded ${initialMarkets.length} markets`);
 
-        // Auto-select first market for demo
+        // Auto-select first market for demo (even if WebSocket is not connected)
         const firstMarket = initialMarkets[0];
         if (firstMarket && firstMarket.tokens && firstMarket.tokens.length > 0) {
           const firstToken = firstMarket.tokens[0];
           handleSelectMarket(firstMarket, firstToken.token_id);
           addActivityMessage(`Auto-selected: ${firstMarket.question.substring(0, 50)}...`);
+
+          if (!isConnected) {
+            addActivityMessage('WebSocket not connected - showing static market data only');
+          }
         }
       } else {
         addActivityMessage('⚠ No markets found');

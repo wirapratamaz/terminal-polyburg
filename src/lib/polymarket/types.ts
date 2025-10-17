@@ -89,6 +89,10 @@ export interface Market {
   archived: boolean;
   volume: string;
   volume_24hr: string;
+  // Additional fields from API
+  clobTokenIds?: string[];
+  outcomePrices?: string[];
+  outcomes?: string[];
 }
 
 export interface Token {
