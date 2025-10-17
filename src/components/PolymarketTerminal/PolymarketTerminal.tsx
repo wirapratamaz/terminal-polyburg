@@ -24,6 +24,16 @@ export function PolymarketTerminal() {
 
   // Initialize WebSocket client
   useEffect(() => {
+    // Check if credentials are available
+    const hasCredentials = !!(process.env.NEXT_PUBLIC_POLYMARKET_API_KEY &&
+                              process.env.POLYMARKET_API_SECRET &&
+                              process.env.POLYMARKET_PASSPHRASE);
+
+    if (!hasCredentials) {
+      addActivityMessage('Warning: Missing Polymarket API credentials in environment variables');
+      addActivityMessage('WebSocket connection will not work without API_SECRET and PASSPHRASE');
+    }
+
     const client = new PolymarketWebSocketClient();
     setWsClient(client);
 
@@ -36,11 +46,21 @@ export function PolymarketTerminal() {
       }
     });
 
+    client.on('error', (error: any) => {
+      const errorMsg = error.message || 'Unknown error';
+      addActivityMessage(`WebSocket error: ${errorMsg}`);
+
+      if (error.code === 'UNAUTHORIZED' || errorMsg.includes('401')) {
+        addActivityMessage('Authentication failed - check API credentials');
+        addActivityMessage('Required: POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE');
+      }
+    });
+
     client.on('book', (book: OrderBookState) => {
       setOrderBook(book);
       setLastUpdateTime(book.timestamp);
       addActivityMessage(
-        `Order book updated: ${book.bids.length} bids, ${book.asks.length} asks`
+        `Order book updated: ${book?.bids?.length || 0} bids, ${book?.asks?.length || 0} asks`
       );
     });
 
@@ -49,6 +69,14 @@ export function PolymarketTerminal() {
       addActivityMessage(
         `Price change: ${change.side} ${change.price} × ${change.size}`
       );
+    });
+
+    client.on('order', (order: any) => {
+      addActivityMessage(`Order update: ${order.side} ${order.size} @ ${order.price}`);
+    });
+
+    client.on('trade', (trade: any) => {
+      addActivityMessage(`Trade executed: ${trade.side} ${trade.size} @ ${trade.price}`);
     });
 
     // Load initial markets
@@ -61,11 +89,28 @@ export function PolymarketTerminal() {
 
   const loadInitialMarkets = async () => {
     setIsSearching(true);
-    const initialMarkets = await fetchMarkets(50);
-    setMarkets(initialMarkets);
-    setIsSearching(false);
-    if (initialMarkets.length > 0) {
-      addActivityMessage(`Loaded ${initialMarkets.length} markets`);
+    try {
+      addActivityMessage('Loading markets from Polymarket...');
+      const initialMarkets = await fetchMarkets(50);
+      setMarkets(initialMarkets);
+      setIsSearching(false);
+
+      if (initialMarkets.length > 0) {
+        addActivityMessage(`✓ Loaded ${initialMarkets.length} markets`);
+
+        // Auto-select first market for demo
+        const firstMarket = initialMarkets[0];
+        if (firstMarket && firstMarket.tokens && firstMarket.tokens.length > 0) {
+          const firstToken = firstMarket.tokens[0];
+          handleSelectMarket(firstMarket, firstToken.token_id);
+          addActivityMessage(`Auto-selected: ${firstMarket.question.substring(0, 50)}...`);
+        }
+      } else {
+        addActivityMessage('⚠ No markets found');
+      }
+    } catch (error) {
+      setIsSearching(false);
+      addActivityMessage(`✗ Failed to load markets: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -90,20 +135,29 @@ export function PolymarketTerminal() {
 
   const handleSelectMarket = useCallback(
     (market: Market, tokenId: string) => {
+      if (!market || !market.tokens) {
+        addActivityMessage('Invalid market data');
+        return;
+      }
+
       setSelectedMarket(market);
       setSelectedTokenId(tokenId);
       setOrderBook(null);
 
       // Find token index
       const tokenIndex = market.tokens.findIndex((t) => t.token_id === tokenId);
-      setSelectedTokenIndex(tokenIndex);
+      setSelectedTokenIndex(tokenIndex >= 0 ? tokenIndex : 0);
 
       // Subscribe to market via WebSocket
       if (wsClient && market.condition_id) {
-        wsClient.subscribeToMarkets([market.condition_id]);
-        addActivityMessage(
-          `Subscribed to: ${market.question} - ${market.tokens[tokenIndex]?.outcome || 'Unknown'}`
-        );
+        if (wsClient.isConnected()) {
+          wsClient.subscribeToMarkets([market.condition_id]);
+          addActivityMessage(
+            `Subscribed to market: ${market.question} - ${market.tokens[tokenIndex]?.outcome || 'Unknown'}`
+          );
+        } else {
+          addActivityMessage('WebSocket not connected - cannot subscribe to market');
+        }
       }
     },
     [wsClient, addActivityMessage]
@@ -112,10 +166,12 @@ export function PolymarketTerminal() {
   // Handle 'q' key to flip outcome
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'q' && selectedMarket && selectedMarket.tokens.length > 1) {
+      if (e.key === 'q' && selectedMarket && selectedMarket.tokens && selectedMarket.tokens.length > 1) {
         const nextIndex = (selectedTokenIndex + 1) % selectedMarket.tokens.length;
         const nextToken = selectedMarket.tokens[nextIndex];
-        handleSelectMarket(selectedMarket, nextToken.token_id);
+        if (nextToken) {
+          handleSelectMarket(selectedMarket, nextToken.token_id);
+        }
       }
     };
 
@@ -124,7 +180,7 @@ export function PolymarketTerminal() {
   }, [selectedMarket, selectedTokenIndex, handleSelectMarket]);
 
   const currentOutcome = useMemo(() => {
-    if (!selectedMarket || selectedTokenIndex < 0) return 'N/A';
+    if (!selectedMarket || selectedTokenIndex < 0 || !selectedMarket.tokens) return 'N/A';
     return selectedMarket.tokens[selectedTokenIndex]?.outcome || 'Unknown';
   }, [selectedMarket, selectedTokenIndex]);
 

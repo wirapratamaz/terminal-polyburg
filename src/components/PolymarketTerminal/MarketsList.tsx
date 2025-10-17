@@ -14,7 +14,7 @@ export function MarketsList({ markets, selectedMarket, onSelectMarket }: Markets
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (markets.length === 0) return;
+      if (!markets || markets.length === 0) return;
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -25,7 +25,7 @@ export function MarketsList({ markets, selectedMarket, onSelectMarket }: Markets
       } else if (e.key === 'Enter' && hoveredIndex >= 0) {
         e.preventDefault();
         const market = markets[hoveredIndex];
-        if (market.tokens.length > 0) {
+        if (market && market.tokens && market.tokens.length > 0) {
           onSelectMarket(market, market.tokens[0].token_id);
         }
       }
@@ -47,7 +47,7 @@ export function MarketsList({ markets, selectedMarket, onSelectMarket }: Markets
   };
 
   // Limit to 18 visible markets
-  const displayMarkets = markets.slice(0, 18);
+  const displayMarkets = (markets && markets.length > 0) ? markets.slice(0, 18) : [];
 
   return (
     <div className="flex flex-col h-full border border-green-500/30 bg-black/90 font-mono">
@@ -81,7 +81,7 @@ export function MarketsList({ markets, selectedMarket, onSelectMarket }: Markets
                       : 'hover:bg-green-500/5'
                   }`}
                   onClick={() => {
-                    if (market.tokens.length > 0) {
+                    if (market.tokens && market.tokens.length > 0) {
                       onSelectMarket(market, market.tokens[0].token_id);
                     }
                   }}

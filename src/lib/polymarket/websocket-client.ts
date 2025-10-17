@@ -14,12 +14,28 @@ export class PolymarketWebSocketClient {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private subscribedMarkets: Set<string> = new Set();
+  private subscribedAssets: Set<string> = new Set();
   private orderBooks: Map<string, OrderBookState> = new Map();
   private listeners: Map<string, Set<(data: any) => void>> = new Map();
+  private isAuthenticated = false;
+  private heartbeatInterval: NodeJS.Timeout | null = null;
 
-  private readonly WS_URL = 'wss://ws-subscriptions-clob.polymarket.com/ws/market';
+  private readonly WS_URL = process.env.NEXT_PUBLIC_POLYMARKET_WS_URL!;
+  private readonly API_KEY = process.env.NEXT_PUBLIC_POLYMARKET_API_KEY!;
+  private readonly API_SECRET = process.env.POLYMARKET_API_SECRET!;
+  private readonly PASSPHRASE = process.env.POLYMARKET_PASSPHRASE!;
 
   constructor() {
+    // Validate credentials before connecting
+    if (!this.API_KEY || !this.API_SECRET || !this.PASSPHRASE) {
+      console.warn('⚠️  Missing Polymarket WebSocket credentials:');
+      console.warn('   - NEXT_PUBLIC_POLYMARKET_API_KEY:', this.API_KEY ? '✓' : '✗ Missing');
+      console.warn('   - POLYMARKET_API_SECRET:', this.API_SECRET ? '✓' : '✗ Missing');
+      console.warn('   - POLYMARKET_PASSPHRASE:', this.PASSPHRASE ? '✓' : '✗ Missing');
+      console.warn('   WebSocket connection will fail without these credentials');
+      console.warn('   Add them to your .env.local file');
+    }
+
     this.connect();
   }
 
@@ -30,37 +46,94 @@ export class PolymarketWebSocketClient {
       this.ws.onopen = () => {
         console.log('WebSocket connected to Polymarket CLOB');
         this.reconnectAttempts = 0;
-        this.emit('connected', true);
-
-        // Resubscribe to markets after reconnection
-        if (this.subscribedMarkets.size > 0) {
-          const markets = Array.from(this.subscribedMarkets);
-          this.subscribeToMarkets(markets);
-        }
+        this.authenticate();
       };
 
       this.ws.onmessage = (event) => {
         try {
-          const message: WebSocketMessage = JSON.parse(event.data);
+          const message = JSON.parse(event.data);
           this.handleMessage(message);
         } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
+          console.error('Failed to parse WebSocket message:', error, event.data);
         }
       };
 
       this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        this.emit('error', error);
+        console.error('WebSocket connection error:', error);
+
+        // Provide specific guidance for common errors
+        if (error instanceof ErrorEvent) {
+          if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+            console.error('🔐 Authentication failed - Check API credentials');
+            this.emit('error', {
+              code: 'UNAUTHORIZED',
+              message: 'Invalid API credentials. Check POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE in .env.local'
+            });
+          } else if (error.message.includes('403') || error.message.includes('Forbidden')) {
+            console.error('🚫 Access forbidden - API key may be invalid or expired');
+            this.emit('error', {
+              code: 'FORBIDDEN',
+              message: 'API key access denied. Verify the API key is valid and active.'
+            });
+          } else {
+            this.emit('error', {
+              code: 'CONNECTION_ERROR',
+              message: `WebSocket connection failed: ${error.message}`
+            });
+          }
+        } else {
+          this.emit('error', {
+            code: 'UNKNOWN_ERROR',
+            message: 'Unknown WebSocket error occurred'
+          });
+        }
       };
 
       this.ws.onclose = () => {
         console.log('WebSocket disconnected');
+        this.isAuthenticated = false;
+        this.stopHeartbeat();
         this.emit('connected', false);
         this.reconnect();
       };
     } catch (error) {
       console.error('Failed to create WebSocket connection:', error);
       this.reconnect();
+    }
+  }
+
+  private authenticate() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.error('WebSocket is not open for authentication');
+      return;
+    }
+
+    const authMessage = {
+      type: 'auth',
+      auth: {
+        key: this.API_KEY,
+        secret: this.API_SECRET,
+        passphrase: this.PASSPHRASE
+      }
+    };
+
+    this.ws.send(JSON.stringify(authMessage));
+    console.log(`Authentication sent with API key: ${this.API_KEY.substring(0, 10)}...`);
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatInterval = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 30000); // Send ping every 30 seconds
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
     }
   }
 
@@ -76,20 +149,107 @@ export class PolymarketWebSocketClient {
     }
   }
 
-  private handleMessage(message: WebSocketMessage) {
-    switch (message.event_type) {
+  private handleMessage(message: any) {
+    // Handle authentication response
+    if (message.type === 'subscription') {
+      this.handleSubscriptionResponse(message);
+      return;
+    }
+
+    // Handle error messages
+    if (message.type === 'error') {
+      this.handleErrorMessage(message);
+      return;
+    }
+
+    // Handle heartbeat responses
+    if (message.type === 'pong') {
+      console.log('Heartbeat received');
+      return;
+    }
+
+    // Handle real-time data messages
+    switch (message.type) {
       case 'book':
-        this.handleBookMessage(message as BookMessage);
+        this.handleBookMessage(message);
         break;
-      case 'price_change':
-        this.handlePriceChangeMessage(message as PriceChangeMessage);
+      case 'market':
+        this.handleMarketMessage(message);
         break;
-      case 'last_trade_price':
-        this.handleTickerMessage(message as TickerMessage);
+      case 'order':
+        this.handleOrderMessage(message);
+        break;
+      case 'trade':
+        this.handleTradeMessage(message);
+        break;
+      case 'status':
+        this.handleStatusMessage(message);
         break;
       default:
         console.log('Unknown message type:', message);
     }
+  }
+
+  private handleSubscriptionResponse(message: any) {
+    const { channel, status, timestamp } = message.data;
+    console.log(`Subscription confirmed: ${channel} - ${status}`);
+
+    if (status === 'subscribed') {
+      if (!this.isAuthenticated) {
+        this.isAuthenticated = true;
+        this.emit('connected', true);
+        this.startHeartbeat();
+      }
+    }
+  }
+
+  private handleErrorMessage(message: any) {
+    const { code, message: errorMessage, timestamp } = message.data;
+    console.error(`Server error [${code}]: ${errorMessage}`);
+    this.emit('error', { code, message: errorMessage, timestamp });
+
+    if (code === 'UNAUTHORIZED') {
+      this.isAuthenticated = false;
+      this.emit('connected', false);
+    }
+  }
+
+  private handleMarketMessage(message: any) {
+    const data = message.data;
+    const key = `${data.market}-${data.asset_id}`;
+
+    // Update order book with market data
+    const orderBook: OrderBookState = {
+      market: data.market,
+      asset_id: data.asset_id,
+      bids: [{ price: data.bid, size: data.volume || "0" }],
+      asks: [{ price: data.ask, size: data.volume || "0" }],
+      timestamp: data.timestamp,
+      lastTradePrice: data.last,
+      lastTradeSide: undefined,
+    };
+
+    this.orderBooks.set(key, orderBook);
+    this.emit('book', orderBook);
+    this.emit(`book:${key}`, orderBook);
+  }
+
+  private handleOrderMessage(message: any) {
+    const data = message.data;
+    console.log('Order update:', data);
+    this.emit('order', data);
+  }
+
+  private handleTradeMessage(message: any) {
+    const data = message.data;
+    console.log('Trade update:', data);
+    this.emit('trade', data);
+  }
+
+  private handleStatusMessage(message: any) {
+    const data = message.data;
+    console.log('Status update:', data);
+    this.emit('status', data);
   }
 
   private handleBookMessage(message: BookMessage) {
@@ -171,15 +331,53 @@ export class PolymarketWebSocketClient {
       return;
     }
 
-    const message: SubscribeMessage = {
-      type: 'subscribe',
-      channel: 'market',
-      markets: markets,
+    if (!this.isAuthenticated) {
+      console.warn('WebSocket is not authenticated. Markets will be subscribed after authentication.');
+      markets.forEach(m => this.subscribedMarkets.add(m));
+      return;
+    }
+
+    const message = {
+      auth: {
+        key: this.API_KEY,
+        secret: this.API_SECRET,
+        passphrase: this.PASSPHRASE
+      },
+      type: 'MARKET',
+      markets: markets
     };
 
     this.ws.send(JSON.stringify(message));
     markets.forEach(market => this.subscribedMarkets.add(market));
     console.log('Subscribed to markets:', markets);
+  }
+
+  public subscribeToAssets(assetIds: string[]) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn('WebSocket is not connected. Assets will be subscribed on connection.');
+      assetIds.forEach(a => this.subscribedAssets.add(a));
+      return;
+    }
+
+    if (!this.isAuthenticated) {
+      console.warn('WebSocket is not authenticated. Assets will be subscribed after authentication.');
+      assetIds.forEach(a => this.subscribedAssets.add(a));
+      return;
+    }
+
+    const message = {
+      auth: {
+        key: this.API_KEY,
+        secret: this.API_SECRET,
+        passphrase: this.PASSPHRASE
+      },
+      type: 'MARKET',
+      asset_ids: assetIds
+    };
+
+    this.ws.send(JSON.stringify(message));
+    assetIds.forEach(assetId => this.subscribedAssets.add(assetId));
+    console.log('Subscribed to assets:', assetIds);
   }
 
   public unsubscribeFromMarkets(markets: string[]) {
@@ -188,10 +386,10 @@ export class PolymarketWebSocketClient {
       return;
     }
 
-    const message: UnsubscribeMessage = {
+    const message = {
       type: 'unsubscribe',
       channel: 'market',
-      markets: markets,
+      markets: markets
     };
 
     this.ws.send(JSON.stringify(message));
@@ -226,15 +424,19 @@ export class PolymarketWebSocketClient {
   }
 
   public disconnect() {
+    this.stopHeartbeat();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
+    this.isAuthenticated = false;
     this.subscribedMarkets.clear();
+    this.subscribedAssets.clear();
     this.orderBooks.clear();
     this.listeners.clear();
   }
 
+  
   public isConnected(): boolean {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }

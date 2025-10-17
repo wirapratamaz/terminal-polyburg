@@ -1,12 +1,11 @@
 import { Market } from './types';
 
 const CLOB_API_BASE = 'https://clob.polymarket.com';
-const GAMMA_API_BASE = 'https://gamma-api.polymarket.com';
 
 export async function fetchMarkets(limit = 100, offset = 0): Promise<Market[]> {
   try {
     const response = await fetch(
-      `${GAMMA_API_BASE}/markets?limit=${limit}&offset=${offset}&active=true&closed=false`,
+      `/api/polymarket/markets?limit=${limit}&offset=${offset}&active=true&closed=false`,
       {
         method: 'GET',
         headers: {
@@ -30,7 +29,7 @@ export async function fetchMarkets(limit = 100, offset = 0): Promise<Market[]> {
 export async function searchMarkets(query: string, limit = 50): Promise<Market[]> {
   try {
     const response = await fetch(
-      `${GAMMA_API_BASE}/markets?limit=${limit}&active=true&closed=false`,
+      `/api/polymarket/markets?limit=${limit}&active=true&closed=false`,
       {
         method: 'GET',
         headers: {
