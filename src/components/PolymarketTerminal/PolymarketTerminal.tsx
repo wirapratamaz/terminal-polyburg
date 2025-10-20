@@ -290,7 +290,9 @@ export function PolymarketTerminal() {
       {/* Bottom status bar */}
       <StatusBar
         isConnected={isConnected}
-        selectedMarket={selectedMarket?.question || null}
+        selectedMarket={selectedMarket}
+        selectedTokenId={selectedTokenId}
+        orderBook={orderBook}
         lastUpdateTime={lastUpdateTime}
       />
     </div>
