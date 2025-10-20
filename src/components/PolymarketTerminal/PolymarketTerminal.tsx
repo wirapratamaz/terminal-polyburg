@@ -22,6 +22,48 @@ export function PolymarketTerminal() {
   const [isSearching, setIsSearching] = useState(false);
   const [activityMessages, setActivityMessages] = useState<string[]>([]);
   const [lastUpdateTime, setLastUpdateTime] = useState<number | null>(null);
+  
+  // Add state for resizable InfoBar
+  const [infoBarHeight, setInfoBarHeight] = useState(128); // Default 128px (h-32)
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Handle resize functionality
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+  
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    const container = document.querySelector('.order-book-container');
+    if (!container) return;
+    
+    const containerRect = container.getBoundingClientRect();
+    const newHeight = containerRect.bottom - e.clientY;
+    
+    // Constrain height between 80px and 300px
+    const constrainedHeight = Math.max(80, Math.min(300, newHeight));
+    setInfoBarHeight(constrainedHeight);
+  }, []);
+  
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+  
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'ns-resize';
+      document.body.style.userSelect = 'none';
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   // Initialize Direct Polymarket WebSocket client
   useEffect(() => {
@@ -265,7 +307,7 @@ export function PolymarketTerminal() {
         </div>
 
         {/* Right panel - Order Book + Activity */}
-        <div className="col-span-8 flex flex-col overflow-hidden">
+        <div className="col-span-8 flex flex-col overflow-hidden order-book-container">
           <div className="flex-1 overflow-hidden">
             <OrderBookPanel
               orderBook={orderBook}
@@ -276,7 +318,19 @@ export function PolymarketTerminal() {
               onDisconnectPolymarket={handleDisconnectPolymarket}
             />
           </div>
-          <div className="h-32 shrink-0 border-t border-green-500/30">
+          
+          {/* Resizable Divider */}
+          <div 
+            className={`h-1 bg-green-500/20 hover:bg-green-500/40 cursor-ns-resize transition-colors ${isDragging ? 'bg-green-500/60' : ''}`}
+            onMouseDown={handleMouseDown}
+            title="Drag to resize InfoBar"
+          >
+            <div className="h-full flex items-center justify-center">
+              <div className="w-8 h-0.5 bg-green-500/60 rounded"></div>
+            </div>
+          </div>
+          
+          <div className="shrink-0 border-t border-green-500/30" style={{ height: `${infoBarHeight}px` }}>
             <InfoBar
               messages={activityMessages}
               selectedMarket={selectedMarket}
