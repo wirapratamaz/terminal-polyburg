@@ -12,16 +12,25 @@ export const config = {
 
   // WebSocket Configuration
   websocket: {
-    url: process.env.NEXT_PUBLIC_WS_URL || 'wss://ws-live-data.polymarket.com',
+    url: process.env.NEXT_PUBLIC_WS_URL || 'wss://ws-subscriptions-clob.polymarket.com/ws/market',
     reconnectAttempts: parseInt(process.env.NEXT_PUBLIC_WS_RECONNECT_ATTEMPTS || '5'),
     reconnectDelay: parseInt(process.env.NEXT_PUBLIC_WS_RECONNECT_DELAY || '1000'),
+    pingInterval: parseInt(process.env.NEXT_PUBLIC_WS_PING_INTERVAL || '10000'),
   },
 
-  // Authentication
+  // Authentication - supports both static and dynamic credentials
   auth: {
     apiKey: process.env.NEXT_PUBLIC_POLYMARKET_API_KEY || '',
-    apiSecret: process.env.POLYMARKET_API_SECRET || '',
-    passphrase: process.env.POLYMARKET_PASSPHRASE || '',
+    apiSecret: process.env.NEXT_PUBLIC_POLYMARKET_SECRET || '',
+    passphrase: process.env.NEXT_PUBLIC_POLYMARKET_PASSPHRASE || '',
+    privateKey: process.env.NEXT_PUBLIC_POLYMARKET_PRIVATE_KEY || '',
+    // Dynamic credentials will be populated by CLOB client
+    derivedCredentials: null as {
+      apiKey: string;
+      secret: string;
+      passphrase: string;
+      walletAddress: string;
+    } | null,
   },
 
   // Development settings
@@ -40,11 +49,11 @@ export function validateConfig() {
   }
 
   if (!config.auth.apiSecret) {
-    errors.push('POLYMARKET_API_SECRET is required for WebSocket authentication');
+    errors.push('NEXT_PUBLIC_POLYMARKET_SECRET is required for WebSocket authentication');
   }
 
   if (!config.auth.passphrase) {
-    errors.push('POLYMARKET_PASSPHRASE is required for WebSocket authentication');
+    errors.push('NEXT_PUBLIC_POLYMARKET_PASSPHRASE is required for WebSocket authentication');
   }
 
   if (errors.length > 0) {

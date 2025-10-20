@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { PolymarketWebSocketClient } from '@/lib/polymarket/websocket-client';
+import { PolymarketGatewayWebSocketClient } from '@/lib/polymarket/gateway-websocket-client';
 import { Market, OrderBookState } from '@/lib/polymarket/types';
 import { fetchMarkets, searchMarkets } from '@/lib/polymarket/api';
 import { SearchPanel } from './SearchPanel';
@@ -11,7 +11,7 @@ import { StatusBar } from './StatusBar';
 import { InfoBar } from './InfoBar';
 
 export function PolymarketTerminal() {
-  const [wsClient, setWsClient] = useState<PolymarketWebSocketClient | null>(null);
+  const [wsClient, setWsClient] = useState<PolymarketGatewayWebSocketClient | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [markets, setMarkets] = useState<Market[]>([]);
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null);
@@ -22,43 +22,31 @@ export function PolymarketTerminal() {
   const [activityMessages, setActivityMessages] = useState<string[]>([]);
   const [lastUpdateTime, setLastUpdateTime] = useState<number | null>(null);
 
-  // Initialize WebSocket client
+  // Initialize WebSocket client (gateway handles authentication)
   useEffect(() => {
-    // Check if credentials are available
-    const hasCredentials = !!(process.env.NEXT_PUBLIC_POLYMARKET_API_KEY &&
-                              process.env.POLYMARKET_API_SECRET &&
-                              process.env.POLYMARKET_PASSPHRASE);
-
-    if (!hasCredentials) {
-      addActivityMessage('📡 WebSocket: Missing API credentials for live data');
-      addActivityMessage('   Add POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE to .env.local');
-      addActivityMessage('   App will work with static market data in the meantime');
-    }
-
-    const client = new PolymarketWebSocketClient();
-    setWsClient(client);
+    console.log('🔧 Creating Gateway WebSocket client...');
+    const client = new PolymarketGatewayWebSocketClient();
+    console.log('📝 Setting up event listeners...');
 
     client.on('connected', (connected: boolean) => {
+      console.log('🔌 WebSocket connected event received:', connected);
+      console.log('📡 Previous isConnected state:', isConnected);
+      console.log('⏰ Event received at:', new Date().toLocaleTimeString());
       setIsConnected(connected);
       if (connected) {
-        addActivityMessage('WebSocket connected to Polymarket CLOB');
+        addActivityMessage('✅ Connected to Polymarket via AdonisJS Gateway');
       } else {
-        addActivityMessage('WebSocket disconnected');
+        addActivityMessage('❌ Disconnected from Gateway');
       }
+      console.log('📡 New isConnected state will be:', connected);
     });
+
+    console.log('💾 Setting wsClient state...');
+    setWsClient(client);
 
     client.on('error', (error: any) => {
       const errorMsg = error.message || 'Unknown error';
-      addActivityMessage(`WebSocket error: ${errorMsg}`);
-
-      if (error.code === 'UNAUTHORIZED' || errorMsg.includes('401')) {
-        addActivityMessage('Authentication failed - check API credentials');
-        addActivityMessage('Required: POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE');
-      } else if (error.code === 'MISSING_CREDENTIALS') {
-        addActivityMessage('⚠️ WebSocket credentials missing in .env.local');
-        addActivityMessage('Add POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE for live data');
-        addActivityMessage('App will work with static market data in the meantime');
-      }
+      addActivityMessage(`Gateway error: ${errorMsg}`);
     });
 
     client.on('book', (book: OrderBookState) => {
@@ -84,13 +72,20 @@ export function PolymarketTerminal() {
       addActivityMessage(`Trade executed: ${trade.side} ${trade.size} @ ${trade.price}`);
     });
 
-    // Load initial markets
-    loadInitialMarkets();
-
     return () => {
-      client.disconnect();
+      client.close();
     };
   }, []);
+
+  // Load markets after WebSocket client is set
+  useEffect(() => {
+    if (wsClient) {
+      console.log('🚀 WebSocket client is ready, loading markets...');
+      console.log('🔍 wsClient.getConnectionStatus():', wsClient.getConnectionStatus());
+      console.log('🔍 Current isConnected state:', isConnected);
+      loadInitialMarkets();
+    }
+  }, [wsClient]);
 
   const loadInitialMarkets = async () => {
     setIsSearching(true);
@@ -115,8 +110,28 @@ export function PolymarketTerminal() {
             handleSelectMarket(firstMarket, firstToken.token_id);
             addActivityMessage(`Auto-selected: ${firstMarket.question.substring(0, 50)}...`);
 
-            if (!isConnected) {
-              addActivityMessage('WebSocket not connected - showing static market data only');
+            console.log('🔍 Checking WebSocket connection status...');
+            console.log('📊 isConnected state:', isConnected);
+            console.log('🔌 wsClient exists:', !!wsClient);
+            console.log('🔗 wsClient.ws state:', wsClient?.ws?.readyState);
+
+            // Check actual WebSocket state as fallback
+            const actuallyConnected = wsClient?.getConnectionStatus() || false;
+            console.log('🔍 Direct WebSocket check:', actuallyConnected);
+
+            // Use the actual WebSocket state instead of React state to avoid Fast Refresh issues
+            if (actuallyConnected) {
+              addActivityMessage('✅ WebSocket connected - live data available');
+              console.log('✅ WebSocket is connected, live data should be available');
+
+              // Update React state if it's out of sync
+              if (!isConnected) {
+                console.log('🔄 Syncing React state with actual WebSocket state');
+                setIsConnected(true);
+              }
+            } else {
+              addActivityMessage('⚠️ WebSocket not connected - showing static market data only');
+              console.log('⚠️ WebSocket not connected, showing static data');
             }
           } else {
             addActivityMessage('⚠ First market has invalid token data');
@@ -169,8 +184,8 @@ export function PolymarketTerminal() {
 
       // Subscribe to market via WebSocket using token ID
       if (wsClient && tokenId) {
-        if (wsClient.isConnected()) {
-          wsClient.subscribeToMarkets([tokenId]);
+        if (wsClient.getConnectionStatus()) {
+          wsClient.subscribeToMarket(tokenId);
           addActivityMessage(
             `Subscribed to market: ${market.question} - ${market.tokens[tokenIndex]?.outcome || 'Unknown'}`
           );

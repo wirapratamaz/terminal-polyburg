@@ -8,6 +8,17 @@ import {
   UnsubscribeMessage,
 } from './types';
 import { config } from '../config';
+// Conditionally import clob-auth to avoid wallet.js browser issues
+let initializePolymarketAuth: any = null;
+if (typeof window === 'undefined') {
+  // Only import on server-side to avoid browser wallet.js issues
+  try {
+    initializePolymarketAuth = require('./clob-auth').initializePolymarketAuth;
+  } catch (e) {
+    console.log('⚠️ CLOB auth import failed, skipping private key derivation');
+  }
+}
+
 
 export class PolymarketWebSocketClient {
   private ws: WebSocket | null = null;
@@ -19,25 +30,91 @@ export class PolymarketWebSocketClient {
   private orderBooks: Map<string, OrderBookState> = new Map();
   private listeners: Map<string, Set<(data: any) => void>> = new Map();
   private isAuthenticated = false;
-  private heartbeatInterval: NodeJS.Timeout | null = null;
 
   private readonly WS_URL = config.websocket.url;
-  private readonly API_KEY = config.auth.apiKey;
-  private readonly API_SECRET = config.auth.apiSecret;
-  private readonly PASSPHRASE = config.auth.passphrase;
+  private API_KEY = config.auth.apiKey;
+  private API_SECRET = config.auth.apiSecret;
+  private PASSPHRASE = config.auth.passphrase;
+  private isInitializing = false;
 
   constructor() {
-    // Validate credentials before connecting
-    if (!this.API_KEY || !this.API_SECRET || !this.PASSPHRASE) {
-      console.warn('⚠️  Missing Polymarket WebSocket credentials:');
-      console.warn('   - NEXT_PUBLIC_POLYMARKET_API_KEY:', this.API_KEY ? '✓' : '✗ Missing');
-      console.warn('   - POLYMARKET_API_SECRET:', this.API_SECRET ? '✓' : '✗ Missing');
-      console.warn('   - POLYMARKET_PASSPHRASE:', this.PASSPHRASE ? '✓' : '✗ Missing');
-      console.warn('   WebSocket connection will fail without these credentials');
-      console.warn('   Add them to your .env.local file');
+    this.initializeCredentials();
+  }
+
+  private async initializeCredentials() {
+    this.isInitializing = true;
+
+    // Check if we have static credentials first
+    const hasStaticCredentials = !!(this.API_KEY && this.API_SECRET && this.PASSPHRASE);
+    const hasPrivateKey = !!config.auth.privateKey;
+    const isUsingDemoCredentials = this.API_SECRET?.includes('demo-sec') || this.PASSPHRASE?.includes('demo-pas');
+
+    console.log('🔐 WebSocket Constructor - Credential Debug:');
+    console.log('   - Has static credentials:', hasStaticCredentials);
+    console.log('   - Has private key:', hasPrivateKey);
+    console.log('   - Using demo credentials:', isUsingDemoCredentials);
+    console.log('   - Private key preview:', config.auth.privateKey ? `${config.auth.privateKey.substring(0, 10)}...` : 'undefined');
+
+    // If we have a private key and are using demo credentials, try to derive real ones
+    if (hasPrivateKey && (isUsingDemoCredentials || !hasStaticCredentials) && initializePolymarketAuth) {
+      try {
+        console.log('🔄 Attempting to derive API credentials from private key...');
+        const derivedCreds = await initializePolymarketAuth(config.auth.privateKey);
+
+        // Check if derivation actually returned valid credentials
+        if (derivedCreds.apiKey && derivedCreds.secret && derivedCreds.passphrase) {
+          // Update instance credentials
+          this.API_KEY = derivedCreds.apiKey;
+          this.API_SECRET = derivedCreds.secret;
+          this.PASSPHRASE = derivedCreds.passphrase;
+
+          // Store in config for other components
+          config.auth.derivedCredentials = derivedCreds;
+
+          console.log('✅ Successfully derived credentials from private key:');
+          console.log('   - API Key preview:', `${derivedCreds.apiKey.substring(0, 15)}...`);
+          console.log('   - Secret preview:', `${derivedCreds.secret.substring(0, 8)}...`);
+          console.log('   - Passphrase preview:', `${derivedCreds.passphrase.substring(0, 8)}...`);
+          console.log('   - Wallet address:', derivedCreds.walletAddress);
+        } else {
+          console.log('⚠️ Private key derivation returned empty credentials, keeping static credentials');
+        }
+
+      } catch (error) {
+        console.error('❌ Failed to derive credentials from private key:', error);
+        console.log('⚠️ Falling back to static credentials from environment');
+      }
+    } else if (hasPrivateKey && !initializePolymarketAuth) {
+      console.log('⚠️ CLOB auth not available in browser, using static credentials');
     }
 
+    // Validate final credentials
+    const hasCredentials = !!(this.API_KEY && this.API_SECRET && this.PASSPHRASE);
+
+    console.log('   - Final API_KEY length:', this.API_KEY?.length || 0);
+    console.log('   - Final API_KEY preview:', this.API_KEY ? `${this.API_KEY.substring(0, 15)}...` : 'undefined');
+    console.log('   - Final API_SECRET length:', this.API_SECRET?.length || 0);
+    console.log('   - Final API_SECRET preview:', this.API_SECRET ? `${this.API_SECRET.substring(0, 8)}...` : 'undefined');
+    console.log('   - Final PASSPHRASE length:', this.PASSPHRASE?.length || 0);
+    console.log('   - Final PASSPHRASE preview:', this.PASSPHRASE ? `${this.PASSPHRASE.substring(0, 8)}...` : 'undefined');
+    console.log('   - Final hasCredentials:', hasCredentials);
+
+    if (!hasCredentials) {
+      console.warn('⚠️  Missing credentials detected:');
+      console.warn('   - API_KEY:', this.API_KEY ? '✓' : '✗ Missing');
+      console.warn('   - API_SECRET:', this.API_SECRET ? '✓' : '✗ Missing');
+      console.warn('   - PASSPHRASE:', this.PASSPHRASE ? '✓' : '✗ Missing');
+      console.warn('   Will skip user channel authentication');
+    } else {
+      console.log('✅ WebSocket credentials configured');
+    }
+
+    this.isInitializing = false;
     this.connect();
+  }
+
+  public isConnected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
   }
 
   private connect() {
@@ -46,8 +123,20 @@ export class PolymarketWebSocketClient {
       this.ws = new WebSocket(this.WS_URL);
 
       this.ws.onopen = () => {
-        console.log('WebSocket connected to Polymarket CLOB');
+        console.log('🔗 WebSocket connected to Polymarket CLOB');
+        console.log('📡 WebSocket readyState:', this.ws?.readyState);
         this.reconnectAttempts = 0;
+
+        // Delay the event emission to ensure React component is ready
+        setTimeout(() => {
+          console.log('🎯 About to emit connected event: true (delayed)');
+          console.log('⏰ Emitting at:', new Date().toLocaleTimeString());
+          console.log('📊 Event emitter _events:', Object.keys(this._events || {}));
+          console.log('👂 Connected listeners:', this._events?.connected?.length || 0);
+          this.emit('connected', true);
+          console.log('✅ Connected event emitted successfully');
+        }, 100);
+
         this.authenticate();
       };
 
@@ -92,9 +181,10 @@ export class PolymarketWebSocketClient {
       };
 
       this.ws.onclose = () => {
-        console.log('WebSocket disconnected');
+        console.log('❌ WebSocket disconnected');
+        console.log('📡 WebSocket readyState:', this.ws?.readyState);
+        console.log('🎯 Emitting connected event: false');
         this.isAuthenticated = false;
-        this.stopHeartbeat();
         this.emit('connected', false);
         this.reconnect();
       };
@@ -105,51 +195,37 @@ export class PolymarketWebSocketClient {
   }
 
   private authenticate() {
+    console.log('🔐 authenticate() called');
+    console.log('   - WebSocket state:', this.ws?.readyState);
+    console.log('   - WebSocket.OPEN constant:', WebSocket.OPEN);
+
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.error('WebSocket is not open for authentication');
+      console.error('❌ WebSocket is not open for authentication');
+      console.error('   - ws exists:', !!this.ws);
+      console.error('   - readyState:', this.ws?.readyState);
       return;
     }
 
-    // Check if we have all required credentials
-    if (!this.API_KEY || !this.API_SECRET || !this.PASSPHRASE) {
-      console.warn('⚠️ Missing WebSocket credentials - skipping authentication');
-      this.emit('error', {
-        code: 'MISSING_CREDENTIALS',
-        message: 'Missing POLYMARKET_API_SECRET or POLYMARKET_PASSPHRASE in .env.local'
-      });
+    // Check if we have all required credentials (same logic as AdonisJS)
+    const hasValidCredentials = !!(this.API_KEY && this.API_SECRET && this.PASSPHRASE);
+
+    console.log('🔐 Authentication credential check:');
+    console.log('   - API_KEY exists:', !!this.API_KEY);
+    console.log('   - API_SECRET exists:', !!this.API_SECRET);
+    console.log('   - PASSPHRASE exists:', !!this.PASSPHRASE);
+    console.log('   - hasValidCredentials:', hasValidCredentials);
+
+    if (!hasValidCredentials) {
+      console.warn('⚠️ Missing credentials - skipping authentication');
+      console.warn('   Market data will still be available without authentication');
+      // Don't emit error for missing credentials - just skip authentication
       return;
     }
 
-    const authMessage = {
-      auth: {
-        key: this.API_KEY,
-        secret: this.API_SECRET,
-        passphrase: this.PASSPHRASE
-      },
-      assets_ids: [], // Will be populated when markets are selected
-      type: "MARKET"
-    };
-
-    this.ws.send(JSON.stringify(authMessage));
-    console.log(`WebSocket authentication sent with API key: ${this.API_KEY.substring(0, 10)}...`);
-    console.log('Authentication message:', JSON.stringify(authMessage, null, 2));
+    // According to our working implementation, authentication happens during subscription
+    console.log('🔐 WebSocket connected - ready for market subscriptions');
   }
 
-  private startHeartbeat() {
-    this.stopHeartbeat();
-    this.heartbeatInterval = setInterval(() => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'ping' }));
-      }
-    }, 30000); // Send ping every 30 seconds
-  }
-
-  private stopHeartbeat() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
-  }
 
   private reconnect() {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
@@ -164,45 +240,58 @@ export class PolymarketWebSocketClient {
   }
 
   private handleMessage(message: any) {
-    console.log('Received WebSocket message:', message);
+    console.log('📨 Received WebSocket message:');
+    console.log('   - Type:', message.type);
+    console.log('   - Full message:', message);
 
     // Handle authentication response
     if (message.type === 'subscription') {
+      console.log('🔐 Handling subscription response...');
       this.handleSubscriptionResponse(message);
       return;
     }
 
     // Handle error messages
     if (message.type === 'error') {
+      console.log('❌ Handling error message...');
       this.handleErrorMessage(message);
       return;
     }
 
-    // Handle heartbeat responses
-    if (message.type === 'pong') {
-      console.log('Heartbeat received');
+
+    // Handle authentication success messages
+    if (message.type === 'auth' || message.type === 'authenticated') {
+      console.log('🔐 Authentication response received:', message);
+      this.isAuthenticated = true;
+      this.emit('connected', true);
       return;
     }
 
     // Handle real-time data messages
     switch (message.type) {
       case 'book':
+        console.log('📖 Handling book message...');
         this.handleBookMessage(message);
         break;
       case 'market':
+        console.log('📊 Handling market message...');
         this.handleMarketMessage(message);
         break;
       case 'order':
+        console.log('📋 Handling order message...');
         this.handleOrderMessage(message);
         break;
       case 'trade':
+        console.log('💰 Handling trade message...');
         this.handleTradeMessage(message);
         break;
       case 'status':
+        console.log('ℹ️ Handling status message...');
         this.handleStatusMessage(message);
         break;
       default:
-        console.log('Unknown message type:', message.type, message);
+        console.log('❓ Unknown message type:', message.type);
+        console.log('   - Full unknown message:', message);
     }
   }
 
@@ -216,7 +305,6 @@ export class PolymarketWebSocketClient {
         if (!this.isAuthenticated) {
           this.isAuthenticated = true;
           this.emit('connected', true);
-          this.startHeartbeat();
         }
       }
     } else if (message.success === true || message.status === 'success') {
@@ -225,7 +313,6 @@ export class PolymarketWebSocketClient {
       if (!this.isAuthenticated) {
         this.isAuthenticated = true;
         this.emit('connected', true);
-        this.startHeartbeat();
       }
     }
   }
@@ -352,41 +439,86 @@ export class PolymarketWebSocketClient {
   }
 
   public subscribeToMarkets(markets: string[]) {
-    if (!this.API_KEY || !this.API_SECRET || !this.PASSPHRASE) {
-      console.warn('⚠️ Cannot subscribe to markets: missing WebSocket credentials');
-      this.emit('error', {
-        code: 'MISSING_CREDENTIALS',
-        message: 'Add POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE to .env.local for live data'
-      });
+    console.log('📊 subscribeToMarkets() called with:', markets);
+
+    const hasValidCredentials = !!(this.API_KEY && this.API_SECRET && this.PASSPHRASE);
+    console.log('🔐 Subscription credential check:');
+    console.log('   - hasValidCredentials:', hasValidCredentials);
+    console.log('   - WebSocket connected:', this.ws?.readyState === WebSocket.OPEN);
+    console.log('   - isAuthenticated flag:', this.isAuthenticated);
+
+    if (!hasValidCredentials) {
+      console.warn('⚠️ Cannot subscribe to markets: missing credentials');
+      console.warn('   Market data subscriptions require API credentials');
+      console.warn('   - API_KEY:', this.API_KEY ? 'exists' : 'missing');
+      console.warn('   - API_SECRET:', this.API_SECRET ? 'exists' : 'missing');
+      console.warn('   - PASSPHRASE:', this.PASSPHRASE ? 'exists' : 'missing');
+      // Don't emit error for missing credentials - just skip subscription
       return;
     }
 
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.warn('WebSocket is not connected. Markets will be subscribed on connection.');
+      console.warn('⚠️ WebSocket is not connected. Markets will be subscribed on connection.');
+      console.warn('   - ws exists:', !!this.ws);
+      console.warn('   - readyState:', this.ws?.readyState);
       markets.forEach(m => this.subscribedMarkets.add(m));
       return;
     }
 
     if (!this.isAuthenticated) {
-      console.warn('WebSocket is not authenticated. Markets will be subscribed after authentication.');
-      markets.forEach(m => this.subscribedMarkets.add(m));
+      console.warn('⚠️ WebSocket is not authenticated. Attempting authentication first...');
+      console.warn('   - Current isAuthenticated:', this.isAuthenticated);
+
+      // Try to authenticate immediately by sending auth message
+      console.log('🔄 Attempting immediate authentication for subscription...');
+
+      const authMessage = {
+        auth: {
+          key: this.API_KEY,
+          secret: this.API_SECRET,
+          passphrase: this.PASSPHRASE
+        },
+        asset_ids: markets,
+        type: "MARKET"
+      };
+
+      console.log('📤 Sending auth + subscription message:');
+      console.log('   - Markets (asset_ids):', markets);
+      console.log('   - Auth key preview:', this.API_KEY.substring(0, 15) + '...');
+      console.log('   - Message structure:', {
+        auth: {
+          key: this.API_KEY ? `${this.API_KEY.substring(0, 15)}...` : 'missing',
+          secret: this.API_SECRET ? `${this.API_SECRET.substring(0, 8)}...` : 'missing',
+          passphrase: this.PASSPHRASE ? `${this.PASSPHRASE.substring(0, 8)}...` : 'missing'
+        },
+        asset_ids: authMessage.asset_ids,
+        type: authMessage.type
+      });
+
+      this.ws.send(JSON.stringify(authMessage));
+      markets.forEach(market => this.subscribedMarkets.add(market));
+      console.log('✅ Auth + subscription message sent for:', markets);
       return;
     }
 
-    // Subscribe to specific token IDs (asset_ids) for market data
+    // Subscribe to specific token IDs with authentication
     const message = {
       auth: {
         key: this.API_KEY,
         secret: this.API_SECRET,
         passphrase: this.PASSPHRASE
       },
-      assets_ids: markets, // These should be token IDs
+      asset_ids: markets,
       type: "MARKET"
     };
 
+    console.log('📤 Sending market subscription:');
+    console.log('   - Markets (asset_ids):', markets);
+    console.log('   - Auth key preview:', this.API_KEY.substring(0, 15) + '...');
+
     this.ws.send(JSON.stringify(message));
     markets.forEach(market => this.subscribedMarkets.add(market));
-    console.log('Subscribed to markets (token IDs):', markets);
+    console.log('✅ Market subscription sent for:', markets);
   }
 
   public subscribeToAssets(assetIds: string[]) {
@@ -418,12 +550,12 @@ export class PolymarketWebSocketClient {
   }
 
   public subscribeToUserChannel(markets: string[] = []) {
-    if (!this.API_KEY || !this.API_SECRET || !this.PASSPHRASE) {
-      console.warn('⚠️ Cannot subscribe to user channel: missing WebSocket credentials');
-      this.emit('error', {
-        code: 'MISSING_CREDENTIALS',
-        message: 'Add POLYMARKET_API_SECRET and POLYMARKET_PASSPHRASE to .env.local for live data'
-      });
+    const hasValidCredentials = !!(this.API_KEY && this.API_SECRET && this.PASSPHRASE);
+
+    if (!hasValidCredentials) {
+      console.warn('⚠️ Cannot subscribe to user channel: missing credentials');
+      console.warn('   User channel requires API credentials');
+      // Don't emit error for missing credentials - just skip subscription
       return;
     }
 
@@ -491,7 +623,6 @@ export class PolymarketWebSocketClient {
   }
 
   public disconnect() {
-    this.stopHeartbeat();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -504,7 +635,4 @@ export class PolymarketWebSocketClient {
   }
 
   
-  public isConnected(): boolean {
-    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
-  }
 }
