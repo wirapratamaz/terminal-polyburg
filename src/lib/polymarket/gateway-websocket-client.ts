@@ -91,6 +91,7 @@ export class PolymarketGatewayWebSocketClient {
     // Handle gateway status messages
     if (message.type === 'gateway_status') {
       console.log(`📡 Gateway status: connected=${message.connected}, clients=${message.clients}`);
+      this.emit('polymarket_status', message.connected);
       return;
     }
 
@@ -327,6 +328,30 @@ export class PolymarketGatewayWebSocketClient {
    */
   getSubscribedAssets(): string[] {
     return Array.from(this.subscribedAssets);
+  }
+
+  /**
+   * Request gateway to connect to Polymarket
+   */
+  connectToPolymarket(): void {
+    console.log('🔌 Requesting gateway to connect to Polymarket');
+    this.sendMessage({ type: 'connect' });
+  }
+
+  /**
+   * Request gateway to disconnect from Polymarket
+   */
+  disconnectFromPolymarket(): void {
+    console.log('🔌 Requesting gateway to disconnect from Polymarket');
+    this.sendMessage({ type: 'disconnect' });
+  }
+
+  /**
+   * Request gateway status
+   */
+  requestStatus(): void {
+    console.log('📊 Requesting gateway status');
+    this.sendMessage({ type: 'status' });
   }
 
   /**

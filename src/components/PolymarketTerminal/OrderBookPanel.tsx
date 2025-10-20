@@ -7,9 +7,19 @@ interface OrderBookPanelProps {
   orderBook: OrderBookState | null;
   marketQuestion: string;
   outcome: string;
+  isPolymarketConnected: boolean;
+  onConnectPolymarket: () => void;
+  onDisconnectPolymarket: () => void;
 }
 
-export function OrderBookPanel({ orderBook, marketQuestion, outcome }: OrderBookPanelProps) {
+export function OrderBookPanel({
+  orderBook,
+  marketQuestion,
+  outcome,
+  isPolymarketConnected,
+  onConnectPolymarket,
+  onDisconnectPolymarket
+}: OrderBookPanelProps) {
   const bestBid = useMemo(() => {
     if (!orderBook?.bids || !orderBook.bids.length) return null;
     return orderBook.bids[0];
@@ -55,6 +65,38 @@ export function OrderBookPanel({ orderBook, marketQuestion, outcome }: OrderBook
       <div className="border-b border-green-500/40 px-2 py-0.5 bg-black">
         <div className="text-green-400 text-xs leading-tight">
           Markets (Up/Down select, Enter/Right view book, 'q' flip outcome)
+        </div>
+      </div>
+
+      {/* Connection Control Panel */}
+      <div className="border-b border-green-500/40 px-2 py-1 bg-gray-900/50">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-3">
+            <span className={`flex items-center gap-1 ${isPolymarketConnected ? 'text-green-400' : 'text-yellow-400'}`}>
+              <span className={`w-2 h-2 rounded-full ${isPolymarketConnected ? 'bg-green-400' : 'bg-yellow-400'}`}></span>
+              Polymarket: {isPolymarketConnected ? 'Connected' : 'Disconnected'}
+            </span>
+            <span className="text-blue-300 text-xs">
+              Direct Connection (No Gateway)
+            </span>
+          </div>
+          <div className="flex gap-1">
+            {!isPolymarketConnected ? (
+              <button
+                onClick={onConnectPolymarket}
+                className="px-2 py-0.5 bg-green-600/80 hover:bg-green-600 text-green-100 text-xs rounded border border-green-500/50 transition-colors"
+              >
+                Connect
+              </button>
+            ) : (
+              <button
+                onClick={onDisconnectPolymarket}
+                className="px-2 py-0.5 bg-red-600/80 hover:bg-red-600 text-red-100 text-xs rounded border border-red-500/50 transition-colors"
+              >
+                Disconnect
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

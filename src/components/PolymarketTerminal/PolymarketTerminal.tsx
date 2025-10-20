@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { PolymarketGatewayWebSocketClient } from '@/lib/polymarket/gateway-websocket-client';
+import { PolymarketDirectWebSocketClient } from '@/lib/polymarket/direct-websocket-client';
 import { Market, OrderBookState } from '@/lib/polymarket/types';
 import { fetchMarkets, searchMarkets } from '@/lib/polymarket/api';
 import { SearchPanel } from './SearchPanel';
@@ -11,8 +11,9 @@ import { StatusBar } from './StatusBar';
 import { InfoBar } from './InfoBar';
 
 export function PolymarketTerminal() {
-  const [wsClient, setWsClient] = useState<PolymarketGatewayWebSocketClient | null>(null);
+  const [wsClient, setWsClient] = useState<PolymarketDirectWebSocketClient | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [polymarketConnected, setPolymarketConnected] = useState(false);
   const [markets, setMarkets] = useState<Market[]>([]);
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
@@ -22,10 +23,10 @@ export function PolymarketTerminal() {
   const [activityMessages, setActivityMessages] = useState<string[]>([]);
   const [lastUpdateTime, setLastUpdateTime] = useState<number | null>(null);
 
-  // Initialize WebSocket client (gateway handles authentication)
+  // Initialize Direct Polymarket WebSocket client
   useEffect(() => {
-    console.log('🔧 Creating Gateway WebSocket client...');
-    const client = new PolymarketGatewayWebSocketClient();
+    console.log('🔧 Creating Direct Polymarket WebSocket client...');
+    const client = new PolymarketDirectWebSocketClient();
     console.log('📝 Setting up event listeners...');
 
     client.on('connected', (connected: boolean) => {
@@ -34,9 +35,10 @@ export function PolymarketTerminal() {
       console.log('⏰ Event received at:', new Date().toLocaleTimeString());
       setIsConnected(connected);
       if (connected) {
-        addActivityMessage('✅ Connected to Polymarket via AdonisJS Gateway');
+        addActivityMessage('✅ Connected to Polymarket');
       } else {
-        addActivityMessage('❌ Disconnected from Gateway');
+        addActivityMessage('❌ Disconnected from Polymarket');
+        setPolymarketConnected(false);
       }
       console.log('📡 New isConnected state will be:', connected);
     });
@@ -47,6 +49,16 @@ export function PolymarketTerminal() {
     client.on('error', (error: any) => {
       const errorMsg = error.message || 'Unknown error';
       addActivityMessage(`Gateway error: ${errorMsg}`);
+    });
+
+    client.on('polymarket_status', (connected: boolean) => {
+      console.log('📊 Polymarket status:', connected);
+      setPolymarketConnected(connected);
+      if (connected) {
+        addActivityMessage('✅ Direct connection to Polymarket established');
+      } else {
+        addActivityMessage('❌ Direct connection to Polymarket lost');
+      }
     });
 
     client.on('book', (book: OrderBookState) => {
@@ -110,28 +122,13 @@ export function PolymarketTerminal() {
             handleSelectMarket(firstMarket, firstToken.token_id);
             addActivityMessage(`Auto-selected: ${firstMarket.question.substring(0, 50)}...`);
 
-            console.log('🔍 Checking WebSocket connection status...');
-            console.log('📊 isConnected state:', isConnected);
-            console.log('🔌 wsClient exists:', !!wsClient);
-            console.log('🔗 wsClient.ws state:', wsClient?.ws?.readyState);
-
-            // Check actual WebSocket state as fallback
-            const actuallyConnected = wsClient?.getConnectionStatus() || false;
-            console.log('🔍 Direct WebSocket check:', actuallyConnected);
-
-            // Use the actual WebSocket state instead of React state to avoid Fast Refresh issues
-            if (actuallyConnected) {
-              addActivityMessage('✅ WebSocket connected - live data available');
-              console.log('✅ WebSocket is connected, live data should be available');
-
-              // Update React state if it's out of sync
-              if (!isConnected) {
-                console.log('🔄 Syncing React state with actual WebSocket state');
-                setIsConnected(true);
-              }
-            } else {
-              addActivityMessage('⚠️ WebSocket not connected - showing static market data only');
-              console.log('⚠️ WebSocket not connected, showing static data');
+            // Auto-connect to Polymarket after markets are loaded
+            if (wsClient && !wsClient.getConnectionStatus()) {
+              console.log('🚀 Auto-connecting to Polymarket after markets loaded...');
+              addActivityMessage('🔌 Auto-connecting to Polymarket...');
+              wsClient.connect();
+            } else if (wsClient?.getConnectionStatus()) {
+              addActivityMessage('✅ Already connected to Polymarket');
             }
           } else {
             addActivityMessage('⚠ First market has invalid token data');
@@ -152,6 +149,22 @@ export function PolymarketTerminal() {
     const timestamp = new Date().toLocaleTimeString();
     setActivityMessages((prev) => [...prev, `[${timestamp}] ${message}`]);
   }, []);
+
+  const handleConnectPolymarket = useCallback(() => {
+    if (wsClient) {
+      wsClient.connect();
+      addActivityMessage('Connecting directly to Polymarket...');
+    } else {
+      addActivityMessage('WebSocket client not available');
+    }
+  }, [wsClient, addActivityMessage]);
+
+  const handleDisconnectPolymarket = useCallback(() => {
+    if (wsClient) {
+      wsClient.disconnect();
+      addActivityMessage('Disconnecting from Polymarket...');
+    }
+  }, [wsClient, addActivityMessage]);
 
   const handleSearch = async (query: string) => {
     setIsSearching(true);
@@ -190,7 +203,7 @@ export function PolymarketTerminal() {
             `Subscribed to market: ${market.question} - ${market.tokens[tokenIndex]?.outcome || 'Unknown'}`
           );
         } else {
-          addActivityMessage('WebSocket not connected - cannot subscribe to market');
+          addActivityMessage('Not connected to Polymarket - cannot subscribe to market');
         }
       }
     },
@@ -258,6 +271,9 @@ export function PolymarketTerminal() {
               orderBook={orderBook}
               marketQuestion={selectedMarket?.question || 'No market selected'}
               outcome={currentOutcome}
+              isPolymarketConnected={isConnected}
+              onConnectPolymarket={handleConnectPolymarket}
+              onDisconnectPolymarket={handleDisconnectPolymarket}
             />
           </div>
           <div className="h-32 shrink-0 border-t border-green-500/30">
